@@ -66,7 +66,16 @@ menu = st.sidebar.radio("Selecione a página:", [
     "📊 Painel de Indicadores", 
     "⚙️ Configurações"
 ])
-
+# --- ESCONDER ELEMENTOS DO STREAMLIT ---
+esconder_botoes = """
+    <style>
+    #MainMenu {visibility: hidden;} /* Esconde o menu hamburguer padrão */
+    header {visibility: hidden;} /* Esconde o cabeçalho com o link do GitHub */
+    footer {visibility: hidden;} /* Esconde o rodapé 'Made with Streamlit' */
+    </style>
+"""
+st.markdown(esconder_botoes, unsafe_allow_html=True)
+# ---------------------------------------
 # SISTEMA DE SEGURANÇA PARA AS ABAS DE GESTÃO
 if menu in ["📊 Painel de Indicadores", "⚙️ Configurações"]:
     st.sidebar.markdown("---")
