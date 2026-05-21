@@ -4,38 +4,25 @@ import os
 from datetime import datetime
 import altair as alt
 
-# 1. Configuração Inicial da Página (Força a página a carregar limpa)
-st.set_page_config(page_title="Gestão de Incidentes - HGMF", layout="wide", initial_sidebar_state="collapsed")
+# 1. Configuração da Página
+st.set_page_config(page_title="Gestão de Incidentes - HGMF", layout="wide")
 
 # =====================================================================
-# 🛡️ BLINDAGEM TOTAL - SEM BARRA LATERAL E SEM MENUS DO STREAMLIT
+# 🛡️ BLINDAGEM DE SUCESSO - APENAS CORTE DE BOTÕES DE EDIÇÃO DO TOP O
 # =====================================================================
-# Bloqueia a barra lateral para sempre e elimina o botão de edição e o cabeçalho
-blindagem_css = """
+st.markdown("""
     <style>
-    /* Esconde a barra lateral por completo para sempre */
-    [data-testid="stSidebar"] {display: none !important; visibility: hidden !important;}
-    
-    /* Oculta o botão de edição/deploy do Streamlit Cloud */
     [data-testid="stAppDeployButton"] {display: none !important;}
-    
-    /* Oculta o cabeçalho nativo inteiro */
     [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
     header {display: none !important; visibility: hidden !important;}
-    
-    /* Oculta a linha colorida de decoração no topo da página */
     [data-testid="stDecoration"] {display: none !important;}
-    
-    /* Oculta o menu de opções do desenvolvedor (três riscos) */
     #MainMenu {visibility: hidden !important; display: none !important;}
-    
-    /* Oculta o rodapé padrão */
     footer {visibility: hidden !important; display: none !important;}
+    /* Remove completamente o espaço da barra lateral para não quebrar o layout */
+    [data-testid="stSidebar"] {display: none !important;}
     </style>
-"""
-st.markdown(blindagem_css, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# Nomes dos ficheiros locais de configuração
 CONFIG_FILE = "config_tabelas.csv"
 USERS_FILE = "config_usuarios.csv"
 
@@ -45,7 +32,7 @@ USERS_FILE = "config_usuarios.csv"
 GOOGLE_SHEET_URL = "COLE_AQUI_O_LINK_DA_SUA_PLANILHA_DO_GOOGLE"
 
 # ---------------------------------------------------------
-# FUNÇÕES DE CARREGAMENTO DE DADOS
+# FUNÇÕES DE CARREGAMENTO
 # ---------------------------------------------------------
 def load_data():
     DATA_FILE = "dados_backup_nuvem.csv"
@@ -102,244 +89,211 @@ def get_opcoes_ativas(df_conf, nome_tabela):
     opcoes = df_conf[(df_conf["Tabela"] == nome_tabela) & (df_conf["Ativo"] == True)]["Opcao"].tolist()
     return opcoes if opcoes else ["Nenhuma opção ativa"]
 
-# Inicializar Estados
 df_config = load_config()
 df_dados = load_data()
 df_usuarios = load_users()
 
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
-if "tela_login" not in st.session_state:
-    st.session_state["tela_login"] = False
-if "usuario_ativo" not in st.session_state:
-    st.session_state["usuario_ativo"] = ""
-if "permissao_ativa" not in st.session_state:
-    st.session_state["permissao_ativa"] = ""
+if "admin_logado" not in st.session_state:
+    st.session_state["admin_logado"] = False
+if "user_permissao" not in st.session_state:
+    st.session_state["user_permissao"] = ""
+if "user_nome" not in st.session_state:
+    st.session_state["user_nome"] = ""
 
+# ---------------------------------------------------------
+# LEITURA DO LINK DE CHAMADA (ROTEAMENTO)
+# ---------------------------------------------------------
+rota = st.query_params.get("p", "")
 
 # =====================================================================
-# FLUXO 1: USUÁRIO NÃO LOGADO (VISÃO PÚBLICA DO QR CODE)
+# LINK DE GESTÃO: Acessado por seu-app.streamlit.app/?p=admin
 # =====================================================================
-if not st.session_state["logado"]:
-    
-    # Linha de Título Principal com Botão de Login à Direita
-    col_tit, col_btn = st.columns([4, 1])
-    with col_tit:
-        st.title("🏥 Gestão da Qualidade e Segurança do Paciente")
-    with col_btn:
-        if st.session_state["tela_login"]:
-            if st.button("⬅️ Voltar ao Formulário", use_container_width=True):
-                st.session_state["tela_login"] = False
-                st.rerun()
-        else:
-            if st.button("🔐 Acesso Gestão", use_container_width=True):
-                st.session_state["tela_login"] = True
-                st.rerun()
-
-    st.markdown("---")
-
-    # SUB-FLUXO A: TELA DE LOGIN CENTRALIZADA
-    if st.session_state["tela_login"]:
-        st.subheader("🔑 Autenticação do Núcleo de Segurança")
+if rota == "admin":
+    if not st.session_state["admin_logado"]:
+        st.title("🔒 Núcleo de Segurança - Painel de Controle")
+        st.subheader("Por favor, faça a sua autenticação")
         
         col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
         with col_l2:
-            with st.form("form_login"):
-                user = st.text_input("👤 Usuário")
-                senha = st.text_input("🔑 Senha", type="password")
-                btn_entrar = st.form_submit_button("Entrar no Painel", use_container_width=True)
+            with st.form("login_admin"):
+                input_user = st.text_input("👤 Usuário")
+                input_senha = st.text_input("🔑 Senha", type="password")
+                btn_login = st.form_submit_button("Entrar no Sistema", use_container_width=True)
                 
-                if btn_entrar:
-                    validacao = df_usuarios[(df_usuarios["Usuario"] == user) & (df_usuarios["Senha"] == senha)]
+                if btn_login:
+                    validacao = df_usuarios[(df_usuarios["Usuario"] == input_user) & (df_usuarios["Senha"] == input_senha)]
                     if not validacao.empty:
-                        st.session_state["logado"] = True
-                        st.session_state["tela_login"] = False
-                        st.session_state["usuario_ativo"] = user
-                        st.session_state["permissao_ativa"] = validacao.iloc[0]["Permissao"]
-                        st.success("Autenticação bem-sucedida!")
+                        st.session_state["admin_logado"] = True
+                        st.session_state["user_nome"] = input_user
+                        st.session_state["user_permissao"] = validacao.iloc[0]["Permissao"]
+                        st.success("Acesso liberado!")
                         st.rerun()
                     else:
-                        st.error("❌ Usuário ou Senha incorretos!")
-
-    # SUB-FLUXO B: FORMULÁRIO DE REGISTRO PADRÃO DO HOSPITAL
+                        st.error("❌ Usuário ou Senha incorretos.")
     else:
-        st.header("Novo Registro de Incidentes")
-        st.info("Preencha os dados abaixo de forma sigilosa. As informações serão tratadas pelo Núcleo de Segurança do Paciente.")
+        # GESTOR LOGADO - MENU SUPERIOR EM ABAS HORIZONTAIS
+        st.write(f"👤 **Sessão Ativa:** `{st.session_state['user_nome']}` | Perfil: `{st.session_state['user_permissao']}`")
         
-        with st.form("form_incidente", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                data_incidente = st.date_input("Data do Incidente")
-                turno = st.selectbox("Turno da Ocorrência", get_opcoes_ativas(df_config, "Turno"))
-                setor = st.selectbox("Setor da Ocorrência", get_opcoes_ativas(df_config, "Setor"))
-                cama = st.text_input("Cama / Leito do Paciente")
-                tipo_geral = st.radio("Tipo de Ocorrência", get_opcoes_ativas(df_config, "Tipo Geral"))
+        # Filtro de permissões para exibir abas
+        abas_disponiveis = []
+        if st.session_state["user_permissao"] in ["Acesso Total", "Apenas Relatórios"]:
+            abas_disponiveis.append("📊 Painel de Indicadores")
+        if st.session_state["user_permissao"] in ["Acesso Total", "Apenas Configurar Tabelas"]:
+            abas_disponiveis.append("⚙️ Configuração de Tabelas")
+            abas_disponiveis.append("👥 Gerenciar Usuários")
+            
+        Abas = st.tabs(abas_disponiveis)
+        
+        # --- ABA 1: DASHBOARD ---
+        if "📊 Painel de Indicadores" in abas_disponiveis:
+            idx_aba = abas_disponiveis.index("📊 Painel de Indicadores")
+            with Abas[idx_aba]:
+                st.title("📊 Painel Gerencial de Incidentes")
+                st.markdown(f"[🔗 Abrir Planilha Base de Dados Completa no Google Sheets]({GOOGLE_SHEET_URL})")
                 
-            with col2:
-                categoria = st.selectbox("Categoria do Incidente", get_opcoes_ativas(df_config, "Categoria"))
-                medicamento = ""
-                if categoria == "Falha na Segurança Medicamentosa":
-                    medicamento = st.text_input("⚠️ Nome do Medicamento Envolvido (Opcional)")
-                    
-                gravidade = st.select_slider("Grau de Dano (Gravidade)", options=get_opcoes_ativas(df_config, "Gravidade"))
-                fatores = st.multiselect("Fatores Causadores", get_opcoes_ativas(df_config, "Fator Causador"))
-                
-            descricao = st.text_area("Descrição Breve do Incidente")
-            st.markdown("---")
-            st.subheader("Dados do Relator (Opcional)")
-            col3, col4 = st.columns(2)
-            with col3:
-                relator = st.text_input("Nome de quem está reportando")
-            with col4:
-                funcao = st.text_input("Função (ex: Enfermeiro, Médico)")
-            
-            submit = st.form_submit_button("📤 Enviar Notificação")
-            
-            if submit:
-                novo_registro = {
-                    "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Data_Incidente": str(data_incidente),
-                    "Turno": turno,
-                    "Setor": setor,
-                    "Cama_Leito": cama,
-                    "Tipo_Geral": tipo_geral,
-                    "Categoria_Incidente": categoria,
-                    "Medicamento_Envolvido": medicamento,
-                    "Gravidade": gravidade,
-                    "Fatores_Causadores": ", ".join(fatores),
-                    "Descricao": descricao,
-                    "Relator": relator,
-                    "Funcao_Relator": funcao
-                }
-                DATA_FILE = "dados_backup_nuvem.csv"
-                df_dados = pd.concat([df_dados, pd.DataFrame([novo_registro])], ignore_index=True)
-                df_dados.to_csv(DATA_FILE, index=False)
-                st.success("✅ Incidente registrado com sucesso!")
-                st.balloons()
-
-
-# =====================================================================
-# FLUXO 2: GESTOR AUTENTICADO (MÓDULO ADMINISTRATIVO 100% CORPO DA PÁGINA)
-# =====================================================================
-if st.session_state["logado"]:
-    
-    # Barra de Identificação Superior
-    col_usr_info, col_logout_btn = st.columns([4, 1])
-    with col_usr_info:
-        st.write(f"🏥 **Painel de Gestão HGMF** | 👤 Usuário: `{st.session_state['usuario_ativo']}` | Nível: `{st.session_state['permissao_ativa']}`")
-    with col_logout_btn:
-        if st.button("🚪 Sair do Painel (Logout)", use_container_width=True):
-            st.session_state["logado"] = False
-            st.session_state["usuario_ativo"] = ""
-            st.session_state["permissao_ativa"] = ""
-            st.rerun()
-            
-    st.markdown("---")
-    
-    # Filtro Dinâmico de Menus baseado na permissão
-    opcoes_disponiveis = []
-    if st.session_state["permissao_ativa"] in ["Acesso Total", "Apenas Relatórios"]:
-        opcoes_disponiveis.append("📊 Painel de Indicadores")
-    if st.session_state["permissao_ativa"] in ["Acesso Total", "Apenas Configurar Tabelas"]:
-        opcoes_disponiveis.append("⚙️ Configuração de Tabelas")
-        opcoes_disponiveis.append("👥 Gerenciar Usuários")
-        
-    # MENU HORIZONTAL DE NAVEGAÇÃO CORPORATIVA
-    menu_gestao = st.radio("Navegação do Sistema:", opcoes_disponiveis, horizontal=True)
-    st.markdown("---")
-
-    # --- ABA 1: DASHBOARD ---
-    if menu_gestao == "📊 Painel de Indicadores":
-        st.title("📊 Dashboard de Segurança do Paciente")
-        st.markdown(f"[🔗 Abrir Planilha Base de Dados Completa no Google Sheets]({GOOGLE_SHEET_URL})")
-        
-        if df_dados.empty:
-            st.info("Ainda não existem dados registrados para exibir os gráficos.")
-        else:
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Total de Notificações", len(df_dados))
-            col2.metric("Incidentes Sem Dano", len(df_dados[df_dados["Gravidade"] == "Sem Dano"]))
-            col3.metric("Total de LPP", len(df_dados[df_dados["Categoria_Incidente"] == "Lesão por Pressão (LPP)"]))
-            col4.metric("Total de Quedas", len(df_dados[df_dados["Categoria_Incidente"] == "Queda do Paciente"]))
-            
-            st.markdown("---")
-            col_chart1, col_chart2 = st.columns(2)
-            with col_chart1:
-                st.subheader("Proporção por Gravidade")
-                df_gravidade = df_dados["Gravidade"].value_counts().reset_index()
-                df_gravidade.columns = ["Gravidade", "Quantidade"]
-                grafico_pizza = alt.Chart(df_gravidade).mark_arc(innerRadius=50).encode(
-                    theta=alt.Theta(field="Quantidade", type="quantitative"),
-                    color=alt.Color(field="Gravidade", type="nominal", scale=alt.Scale(scheme="category10")),
-                    tooltip=["Gravidade", "Quantidade"]
-                ).properties(height=350)
-                st.altair_chart(grafico_pizza, use_container_width=True)
-                
-            with col_chart2:
-                st.subheader("Incidentes por Categoria")
-                st.bar_chart(df_dados["Categoria_Incidente"].value_counts())
-
-    # --- ABA 2: CONFIGURAÇÃO DE MENUS ---
-    elif menu_gestao == "⚙️ Configuração de Tabelas":
-        st.title("⚙️ Configuração de Tabelas")
-        tabelas_disponiveis = df_config["Tabela"].unique()
-        tabela_selecionada = st.selectbox("Selecione o Menu que deseja configurar:", tabelas_disponiveis)
-        
-        df_filtro = df_config[df_config["Tabela"] == tabela_selecionada].copy()
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.subheader(f"Gerenciar opções de: {tabela_selecionada}")
-            df_editado = st.data_editor(
-                df_filtro,
-                column_config={"Ativo": st.column_config.CheckboxColumn("Ativo (Mostrar)?", default=True), "Tabela": None},
-                disabled=["Opcao"], hide_index=True, use_container_width=True
-            )
-            if st.button("💾 Salvar Status"):
-                for idx, row in df_editado.iterrows():
-                    mask = (df_config["Tabela"] == tabela_selecionada) & (df_config["Opcao"] == row["Opcao"])
-                    df_config.loc[mask, "Ativo"] = row["Ativo"]
-                df_config.to_csv(CONFIG_FILE, index=False)
-                st.success("✅ Configurações atualizadas!")
-                st.rerun()
-                
-        with col2:
-            st.subheader("➕ Adicionar Novo Item")
-            nova_opcao = st.text_input("Escreva o nome da nova opção:")
-            if st.button("Adicionar"):
-                if nova_opcao.strip() != "":
-                    existe = ((df_config["Tabela"] == tabela_selecionada) & (df_config["Opcao"].str.lower() == nova_opcao.lower())).any()
-                    if not existe:
-                        novo_reg = {"Tabela": tabela_selecionada, "Opcao": nova_opcao.strip(), "Ativo": True}
-                        df_config = pd.concat([df_config, pd.DataFrame([novo_reg])], ignore_index=True)
-                        df_config.to_csv(CONFIG_FILE, index=False)
-                        st.success("✅ Adicionado!")
-                        st.rerun()
-
-    # --- ABA 3: GERENCIADOR DE USUÁRIOS ---
-    elif menu_gestao == "👥 Gerenciar Usuários":
-        st.title("👥 Controle de Usuários e Permissões")
-        
-        col_u1, col_u2 = st.columns([2, 1])
-        with col_u1:
-            st.subheader("Lista de Usuários com Acesso Administrativo")
-            st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
-            
-        with col_u2:
-            st.subheader("➕ Criar Novo Usuário")
-            novo_user = st.text_input("Nome do Usuário (Sem espaços)")
-            nova_senha = st.text_input("Senha de Acesso", type="password")
-            permissao = st.selectbox("Nível de Permissão", ["Acesso Total", "Apenas Relatórios", "Apenas Configurar Tabelas"])
-            
-            if st.button("💾 Salvar Novo Usuário"):
-                if novo_user.strip() == "" or nova_senha.strip() == "":
-                    st.error("Por favor, preencha o Usuário e a Senha!")
+                if df_dados.empty:
+                    st.info("Nenhum dado registrado na folha do Google Sheets.")
                 else:
-                    if (df_usuarios["Usuario"].str.lower() == novo_user.strip().lower()).any():
-                        st.error("Esse nome de usuário já está cadastrado!")
-                    else:
-                        novo_usr_dict = {"Usuario": novo_user.strip(), "Senha": nova_senha, "Permissao": permissao}
-                        df_usuarios = pd.concat([df_usuarios, pd.DataFrame([novo_usr_dict])], ignore_index=True)
-                        df_usuarios.to_csv(USERS_FILE, index=False)
-                        st.success(f"✅ Usuário '{novo_user}' criado com sucesso!")
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Total de Notificações", len(df_dados))
+                    c2.metric("Incidentes Sem Dano", len(df_dados[df_dados["Gravity"] == "Sem Dano"] if "Gravity" in df_dados else df_dados[df_dados["Gravidade"] == "Sem Dano"]))
+                    c3.metric("Total de LPP", len(df_dados[df_dados["Categoria_Incidente"] == "Lesão por Pressão (LPP)"]))
+                    c4.metric("Total de Quedas", len(df_dados[df_dados["Categoria_Incidente"] == "Queda do Paciente"]))
+                    
+                    st.markdown("---")
+                    g1, g2 = st.columns(2)
+                    with g1:
+                        st.subheader("Gravidade dos Danos")
+                        df_g = df_dados["Gravidade"].value_counts().reset_index()
+                        df_g.columns = ["Gravidade", "Qtd"]
+                        pizza = alt.Chart(df_g).mark_arc(innerRadius=50).encode(
+                            theta=alt.Theta(field="Qtd", type="quantitative"),
+                            color=alt.Color(field="Gravidade", type="nominal"),
+                            tooltip=["Gravidade", "Qtd"]
+                        ).properties(height=300)
+                        st.altair_chart(pizza, use_container_width=True)
+                    with g2:
+                        st.subheader("Incidentes por Categoria")
+                        st.bar_chart(df_dados["Categoria_Incidente"].value_counts())
+
+        # --- ABA 2: CONFIGURAÇÃO DE MENUS ---
+        if "⚙️ Configuração de Tabelas" in abas_disponiveis:
+            idx_aba = abas_disponiveis.index("⚙️ Configuração de Tabelas")
+            with Abas[idx_aba]:
+                st.title("⚙️ Gerenciar Opções dos Menus")
+                lista_tabelas = df_config["Tabela"].unique()
+                tab_sel = st.selectbox("Escolha o menu para editar:", lista_tabelas)
+                
+                df_f = df_config[df_config["Tabela"] == tab_sel].copy()
+                col_t1, col_t2 = st.columns([2, 1])
+                
+                with col_t1:
+                    df_ed = st.data_editor(
+                        df_f,
+                        column_config={"Ativo": st.column_config.CheckboxColumn("Ativo (Mostrar)?"), "Tabela": None},
+                        disabled=["Opcao"], hide_index=True, use_container_width=True
+                    )
+                    if st.button("💾 Gravar Alterações de Status"):
+                        for _, r in df_ed.iterrows():
+                            mask = (df_config["Tabela"] == tab_sel) & (df_config["Opcao"] == r["Opcao"])
+                            df_config.loc[mask, "Ativo"] = r["Ativo"]
+                        df_config.to_csv(CONFIG_FILE, index=False)
+                        st.success("Status atualizado!")
                         st.rerun()
+                with col_t2:
+                    st.subheader("➕ Novo Item")
+                    n_op = st.text_input("Nome da nova opção:")
+                    if st.button("Adicionar Item"):
+                        if n_op.strip() != "":
+                            if not ((df_config["Tabela"] == tab_sel) & (df_config["Opcao"].str.lower() == n_op.strip().lower())).any():
+                                new_r = {"Tabela": tab_sel, "Opcao": n_op.strip(), "Ativo": True}
+                                df_config = pd.concat([df_config, pd.DataFrame([new_r])], ignore_index=True)
+                                df_config.to_csv(CONFIG_FILE, index=False)
+                                st.success("Item adicionado!")
+                                st.rerun()
+
+        # --- ABA 3: PERMISSÕES E USUÁRIOS ---
+        if "👥 Gerenciar Usuários" in abas_disponiveis:
+            idx_aba = abas_disponiveis.index("👥 Gerenciar Usuários")
+            with Abas[idx_aba]:
+                st.title("👥 Controle de Usuários e Permissões")
+                cu1, cu2 = st.columns([2, 1])
+                with cu1:
+                    st.subheader("Usuários Ativos")
+                    st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
+                with cu2:
+                    st.subheader("➕ Criar Novo Perfil")
+                    n_user = st.text_input("Login (Sem espaços)")
+                    n_senha = st.text_input("Senha", type="password")
+                    n_perm = st.selectbox("Nível de Permissão", ["Acesso Total", "Apenas Relatórios", "Apenas Configurar Tabelas"])
+                    
+                    if st.button("Gravar Usuário"):
+                        if n_user.strip() != "" and n_senha.strip() != "":
+                            if not (df_usuarios["Usuario"].str.lower() == n_user.strip().lower()).any():
+                                df_usuarios = pd.concat([df_usuarios, pd.DataFrame([{"Usuario": n_user.strip(), "Senha": n_senha, "Permissao": n_perm}])], ignore_index=True)
+                                df_usuarios.to_csv(USERS_FILE, index=False)
+                                st.success("Usuário criado!")
+                                st.rerun()
+                            else:
+                                st.error("Este login já existe!")
+
+        st.markdown("---")
+        if st.button("🚪 Sair do Sistema (Logout)", use_container_width=True):
+            st.session_state["admin_logado"] = False
+            st.rerun()
+
+# =====================================================================
+# LINK DO QR CODE (PÚBLICO): Acessado pelo link normal sem parâmetros
+# =====================================================================
+else:
+    st.title("🏥 Hospital Geral Menandro de Faria")
+    st.header("Notificação de Incidente Assistencial / Administrativo")
+    st.info("Garantimos o sigilo absoluto do seu relato. Ajude-nos a melhorar a segurança do nosso hospital.")
+    
+    with st.form("form_publico", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            data_incidente = st.date_input("Data do Incidente")
+            turno = st.selectbox("Turno", get_opcoes_ativas(df_config, "Turno"))
+            setor = st.selectbox("Setor Ocorrência", get_opcoes_ativas(df_config, "Setor"))
+            cama = st.text_input("Leito / Cama")
+            tipo_geral = st.radio("Tipo", get_opcoes_ativas(df_config, "Tipo Geral"))
+        with col2:
+            categoria = st.selectbox("Categoria", get_opcoes_ativas(df_config, "Categoria"))
+            medicamento = ""
+            if categoria == "Falha na Segurança Medicamentosa":
+                medicamento = st.text_input("Medicamento Envolvido (Opcional)")
+            gravidade = st.select_slider("Gravidade do Dano", options=get_opcoes_ativas(df_config, "Gravidade"))
+            fatores = st.multiselect("Fatores Causadores", get_opcoes_ativas(df_config, "Fator Causador"))
+            
+        descricao = st.text_area("Descrição do Incidente")
+        st.markdown("---")
+        st.subheader("Identificação (Opcional)")
+        c3, c4 = st.columns(2)
+        with c3:
+            relator = st.text_input("Seu Nome")
+        with c4:
+            funcao = st.text_input("Sua Função")
+            
+        submit = st.form_submit_button("📤 Enviar Notificação para o Núcleo", use_container_width=True)
+        if submit:
+            novo_registro = {
+                "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Data_Incidente": str(data_incidente),
+                "Turno": turno,
+                "Setor": setor,
+                "Cama_Leito": cama,
+                "Tipo_Geral": tipo_geral,
+                "Categoria_Incidente": categoria,
+                "Medicamento_Envolvido": medicamento,
+                "Gravidade": gravidade,
+                "Fatores_Causadores": ", ".join(fatores),
+                "Descricao": descricao,
+                "Relator": relator,
+                "Funcao_Relator": funcao
+            }
+            DATA_FILE = "dados_backup_nuvem.csv"
+            df_dados = pd.concat([df_dados, pd.DataFrame([novo_registro])], ignore_index=True)
+            df_dados.to_csv(DATA_FILE, index=False)
+            st.success("✅ Notificação enviada com sucesso ao Núcleo de Segurança do Paciente!")
+            st.balloons()
