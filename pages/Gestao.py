@@ -19,7 +19,7 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 [data-testid="stAppDeployButton"] {display:none !important;}
-[data-testid="stHeaderActionElements"] {display:none !important;} /* Esconde apenas os botões da direita */
+[data-testid="stHeaderActionElements"] {display:none !important;}
 [data-testid="stDecoration"]      {display:none !important;}
 footer                            {display:none !important;}
 [data-testid="stSidebarNav"]      {display:none !important;}
@@ -115,9 +115,6 @@ div[data-testid="stFormSubmitButton"] > button {
 """, unsafe_allow_html=True)
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
-DATA_FILE   = "dados_incidentes.csv"
-CONFIG_FILE = "config_tabelas.csv"
-USERS_FILE  = "config_usuarios.csv"
 SENHA_ADMIN_MESTRE = hashlib.sha256("sp#9198sider".encode()).hexdigest()
 
 COLUNAS_DADOS = [
@@ -147,57 +144,75 @@ def _cor_gravidade(g: str) -> str:
             return v
     return "semDano"
 
-# ─── Funções de dados ─────────────────────────────────────────────────────────
+# ─── Funções de dados (PostgreSQL) ────────────────────────────────────────────
 def hash_senha(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 def load_data() -> pd.DataFrame:
-    if not os.path.exists(DATA_FILE):
-        df = pd.DataFrame(columns=COLUNAS_DADOS)
-        df.to_csv(DATA_FILE, index=False)
+    try:
+        conn = st.connection("postgresql", type="sql")
+        df = conn.query("SELECT * FROM dados_incidentes", ttl=0)
+        for col in COLUNAS_DADOS:
+            if col not in df.columns:
+                df[col] = ""
         return df
-    df = pd.read_csv(DATA_FILE)
-    for col in COLUNAS_DADOS:
-        if col not in df.columns:
-            df[col] = ""
-    return df
+    except:
+        return pd.DataFrame(columns=COLUNAS_DADOS)
 
 def save_data(df: pd.DataFrame):
-    df.to_csv(DATA_FILE, index=False)
+    engine = st.connection("postgresql", type="sql").engine
+    df.to_sql("dados_incidentes", con=engine, if_exists="replace", index=False)
 
 def load_config() -> pd.DataFrame:
-    if not os.path.exists(CONFIG_FILE):
-        return pd.DataFrame(columns=["Tabela", "Opcao", "Ativo"])
-    return pd.read_csv(CONFIG_FILE)
+    try:
+        conn = st.connection("postgresql", type="sql")
+        df = conn.query("SELECT * FROM config_tabelas", ttl=0)
+        if not df.empty:
+            return df
+    except:
+        pass
+    return pd.DataFrame(columns=["Tabela", "Opcao", "Ativo"])
 
 def save_config(df: pd.DataFrame):
-    df.to_csv(CONFIG_FILE, index=False)
+    engine = st.connection("postgresql", type="sql").engine
+    df.to_sql("config_tabelas", con=engine, if_exists="replace", index=False)
 
 def load_users() -> pd.DataFrame:
-    if not os.path.exists(USERS_FILE):
-        df = pd.DataFrame([{
-            "Usuario": "admin",
-            "Senha_Hash": hash_senha("admin123"),
-            "Permissao": "Acesso Total",
-            "Ativo": True,
-            "Data_Criacao": datetime.now().strftime("%Y-%m-%d"),
-        }])
-        df.to_csv(USERS_FILE, index=False)
-        return df
-    df = pd.read_csv(USERS_FILE)
-    # Retrocompatibilidade: migrar senhas em texto plano
-    if "Senha_Hash" not in df.columns and "Senha" in df.columns:
-        df["Senha_Hash"] = df["Senha"].apply(lambda x: hash_senha(str(x)))
-        df.drop(columns=["Senha"], inplace=True)
-        df.to_csv(USERS_FILE, index=False)
-    if "Ativo" not in df.columns:
-        df["Ativo"] = True
-    if "Data_Criacao" not in df.columns:
-        df["Data_Criacao"] = ""
+    try:
+        conn = st.connection("postgresql", type="sql")
+        df = conn.query("SELECT * FROM config_usuarios", ttl=0)
+        if not df.empty:
+            # Retrocompatibilidade
+            if "Senha_Hash" not in df.columns and "Senha" in df.columns:
+                df["Senha_Hash"] = df["Senha"].apply(lambda x: hash_senha(str(x)))
+                df.drop(columns=["Senha"], inplace=True)
+                engine = conn.engine
+                df.to_sql("config_usuarios", con=engine, if_exists="replace", index=False)
+            if "Ativo" not in df.columns:
+                df["Ativo"] = True
+            if "Data_Criacao" not in df.columns:
+                df["Data_Criacao"] = ""
+            return df
+    except:
+        pass
+        
+    df = pd.DataFrame([{
+        "Usuario": "admin",
+        "Senha_Hash": hash_senha("admin123"),
+        "Permissao": "Acesso Total",
+        "Ativo": True,
+        "Data_Criacao": datetime.now().strftime("%Y-%m-%d"),
+    }])
+    try:
+        engine = st.connection("postgresql", type="sql").engine
+        df.to_sql("config_usuarios", con=engine, if_exists="replace", index=False)
+    except:
+        pass
     return df
 
 def save_users(df: pd.DataFrame):
-    df.to_csv(USERS_FILE, index=False)
+    engine = st.connection("postgresql", type="sql").engine
+    df.to_sql("config_usuarios", con=engine, if_exists="replace", index=False)
 
 def get_opcoes(df_conf: pd.DataFrame, tabela: str):
     ops = df_conf[(df_conf["Tabela"] == tabela) & (df_conf["Ativo"] == True)]["Opcao"].tolist()
@@ -740,7 +755,7 @@ elif menu == "⚙️ Configurar Menus":
     st.title("⚙️ Configuração de Menus e Opções")
 
     if df_config.empty:
-        st.warning("Arquivo de configuração não encontrado. Execute o app.py primeiro para criar as opções padrão.")
+        st.warning("Arquivo de configuração não encontrado.")
         st.stop()
 
     lista_tabelas = sorted(df_config["Tabela"].unique().tolist())
