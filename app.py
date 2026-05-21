@@ -4,10 +4,36 @@ import os
 from datetime import datetime
 import altair as alt
 
-# 1. Configuração Inicial (A barra lateral começa sempre oculta)
+# 1. Configuração Inicial da Página
 st.set_page_config(page_title="Gestão de Incidentes - HGMF", layout="wide", initial_sidebar_state="collapsed")
 
-# Nomes dos ficheiros locais
+# =====================================================================
+# 🛡️ BLINDAGEM TOTAL - OCULTAR BOTÕES DE EDIÇÃO, GITHUB E MENUS DO STREAMLIT
+# =====================================================================
+# Este bloco injeta CSS diretamente no núcleo do app para apagar o botão de deploy/edit,
+# a linha de decoração superior, o menu hambúrguer e todo o cabeçalho nativo.
+blindagem_css = """
+    <style>
+    /* Oculta o botão de edição/deploy do Streamlit Cloud */
+    [data-testid="stAppDeployButton"] {display: none !important;}
+    
+    # /* Oculta a barra de cabeçalho nativa inteira e o ícone do GitHub */
+    [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
+    header {display: none !important; visibility: hidden !important;}
+    
+    # /* Oculta a linha colorida de decoração no topo da página */
+    [data-testid="stDecoration"] {display: none !important;}
+    
+    # /* Oculta o menu de opções do desenvolvedor (três riscos) */
+    #MainMenu {visibility: hidden !important; display: none !important;}
+    
+    # /* Oculta o rodapé padrão */
+    footer {visibility: hidden !important; display: none !important;}
+    </style>
+"""
+st.markdown(blindagem_css, unsafe_allow_html=True)
+
+# Nomes dos ficheiros locais de configuração
 CONFIG_FILE = "config_tabelas.csv"
 USERS_FILE = "config_usuarios.csv"
 
@@ -74,7 +100,7 @@ def get_opcoes_ativas(df_conf, nome_tabela):
     opcoes = df_conf[(df_conf["Tabela"] == nome_tabela) & (df_conf["Ativo"] == True)]["Opcao"].tolist()
     return opcoes if opcoes else ["Nenhuma opção ativa"]
 
-# Inicializar Estados e Variáveis
+# Inicializar Estados
 df_config = load_config()
 df_dados = load_data()
 df_usuarios = load_users()
@@ -88,33 +114,21 @@ if "usuario_ativo" not in st.session_state:
 if "permissao_ativa" not in st.session_state:
     st.session_state["permissao_ativa"] = ""
 
-# --- CONTROLO RIGOROSO DE VISIBILIDADE DA BARRA LATERAL ---
+# --- OCULTAR A BARRA LATERAL CASO NÃO ESTEJA LOGADO ---
 if not st.session_state["logado"]:
-    # Se NÃO está logado, esconde obrigatoriamente a barra lateral e cabeçalhos do Streamlit
-    st.markdown("""
-        <style>
-        [data-testid="stSidebar"] {display: none !important;}
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-        </style>
-    """, unsafe_allow_html=True)
-else:
-    # Se ESTÁ logado, mantém apenas os menus de desenvolvimento ocultos, mas liberta a barra lateral
-    st.markdown("""<style>#MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}</style>""", unsafe_allow_html=True)
+    st.markdown("<style>[data-testid='stSidebar'] {display: none !important;}</style>", unsafe_allow_html=True)
 
 
 # =====================================================================
-# FLUXO 1: USUÁRIO NÃO LOGADO (VISÃO DO QR CODE / PÚBLICA)
+# FLUXO 1: USUÁRIO NÃO LOGADO (VISÃO PÚBLICA DO QR CODE)
 # =====================================================================
 if not st.session_state["logado"]:
     
-    # Cabeçalho Superior com Botão de Login Alinhado à Direita
+    # Linha de Título com Botão de Login à Direita
     col_tit, col_btn = st.columns([4, 1])
     with col_tit:
         st.title("🏥 Gestão da Qualidade e Segurança do Paciente")
     with col_btn:
-        # Alterna entre mostrar o formulário ou a tela de login
         if st.session_state["tela_login"]:
             if st.button("⬅️ Voltar ao Formulário"):
                 st.session_state["tela_login"] = False
@@ -126,7 +140,7 @@ if not st.session_state["logado"]:
 
     st.markdown("---")
 
-    # SUB-FLUXO A: TELA DE LOGIN CENTRALIZADA
+    # SUB-FLUXO A: TELA DE LOGIN CENTRALIZADA NA TELA PRINCIPAL
     if st.session_state["tela_login"]:
         st.subheader("🔑 Autenticação do Núcleo de Segurança")
         
@@ -149,7 +163,7 @@ if not st.session_state["logado"]:
                     else:
                         st.error("❌ Usuário ou Senha incorretos!")
 
-    # SUB-FLUXO B: FORMULÁRIO PADRÃO DO HOSPITAL
+    # SUB-FLUXO B: FORMULÁRIO DE REGISTRO PADRÃO DO HOSPITAL
     else:
         st.header("Novo Registro de Incidente")
         st.info("Preencha os dados abaixo de forma sigilosa. As informações serão tratadas pelo Núcleo de Segurança do Paciente.")
@@ -174,7 +188,7 @@ if not st.session_state["logado"]:
                 
             descricao = st.text_area("Descrição Breve do Incidente")
             st.markdown("---")
-            st.subheader("Dados do Relator (Opcional - Garantimos o Anonimato)")
+            st.subheader("Dados do Relator (Opcional)")
             col3, col4 = st.columns(2)
             with col3:
                 relator = st.text_input("Nome de quem está reportando")
@@ -207,16 +221,16 @@ if not st.session_state["logado"]:
 
 
 # =====================================================================
-# FLUXO 2: GESTOR AUTENTICADO (MÓDULO ADMINISTRATIVO COMPLETO)
+# FLUXO 2: GESTOR AUTENTICADO (MÓDULO ADMINISTRATIVO LIBERADO)
 # =====================================================================
 if st.session_state["logado"]:
     
-    # Barra Lateral Administrativa Ativa
+    # Configuração da Barra Lateral de Navegação
     st.sidebar.title(f"Olá, {st.session_state['usuario_ativo']}!")
     st.sidebar.markdown(f"**Nível:** `{st.session_state['permissao_ativa']}`")
     st.sidebar.markdown("---")
     
-    # Criação dinâmica de menus baseada no nível de permissão do utilizador
+    # Filtro de Menus por Permissão
     opcoes_disponiveis = []
     if st.session_state["permissao_ativa"] in ["Acesso Total", "Apenas Relatórios"]:
         opcoes_disponiveis.append("📊 Painel de Indicadores")
@@ -301,7 +315,7 @@ if st.session_state["logado"]:
                         st.success("✅ Adicionado!")
                         st.rerun()
 
-    # --- ABA 3: GERENCIADOR DE USUÁRIOS E PERMISSÕES CORPORATIVAS ---
+    # --- ABA 3: GERENCIADOR DE USUÁRIOS E PERMISSÕES ---
     elif menu_gestao == "👥 Gerenciar Usuários":
         st.title("👥 Controle de Usuários e Permissões")
         
@@ -309,7 +323,6 @@ if st.session_state["logado"]:
         with col_u1:
             st.subheader("Lista de Usuários com Acesso Administrativo")
             st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
-            st.caption("Nota: O utilizador 'admin' inicial não pode ser removido para proteção do sistema.")
             
         with col_u2:
             st.subheader("➕ Criar Novo Usuário")
