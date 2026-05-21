@@ -16,7 +16,7 @@ st.markdown("""
 
 [data-testid="stSidebar"]          {display:none !important;}
 [data-testid="stAppDeployButton"]  {display:none !important;}
-[data-testid="stHeaderActionElements"] {display:none !important;} /* Esconde apenas os botões da direita */
+[data-testid="stHeaderActionElements"] {display:none !important;}
 [data-testid="stDecoration"]       {display:none !important;}
 footer                             {display:none !important;}
 [data-testid="stSidebarNav"]       {display:none !important;}
@@ -86,9 +86,7 @@ div[data-testid="stCheckbox"] > label       { font-size: 0.88rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Caminhos de dados ────────────────────────────────────────────────────────
-DATA_FILE   = "dados_incidentes.csv"
-CONFIG_FILE = "config_tabelas.csv"
+# ─── Colunas de dados ────────────────────────────────────────────────────────
 COLUNAS = [
     "Data_Registro", "Data_Incidente", "Hora_Aproximada", "Turno", "Setor",
     "Cama_Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
@@ -98,99 +96,106 @@ COLUNAS = [
     "Relator", "Funcao_Relator", "Status"
 ]
 
-# ─── Funções de carga ─────────────────────────────────────────────────────────
+# ─── Funções de carga (PostgreSQL) ────────────────────────────────────────────
 def load_data():
-    if not os.path.exists(DATA_FILE):
-        df = pd.DataFrame(columns=COLUNAS)
-        df.to_csv(DATA_FILE, index=False)
+    try:
+        conn = st.connection("postgresql", type="sql")
+        df = conn.query("SELECT * FROM dados_incidentes", ttl=0)
+        for col in COLUNAS:
+            if col not in df.columns:
+                df[col] = ""
         return df
-    return pd.read_csv(DATA_FILE)
+    except:
+        return pd.DataFrame(columns=COLUNAS)
+
+def save_data(df: pd.DataFrame):
+    engine = st.connection("postgresql", type="sql").engine
+    df.to_sql("dados_incidentes", con=engine, if_exists="replace", index=False)
 
 def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        opcoes_padrao = [
-            # Turno
-            {"Tabela": "Turno", "Opcao": "Manhã (07h–13h)",   "Ativo": True},
-            {"Tabela": "Turno", "Opcao": "Tarde (13h–19h)",   "Ativo": True},
-            {"Tabela": "Turno", "Opcao": "Noite (19h–07h)",   "Ativo": True},
-            # Tipo Geral
-            {"Tabela": "Tipo Geral", "Opcao": "Assistencial",   "Ativo": True},
-            {"Tabela": "Tipo Geral", "Opcao": "Administrativa", "Ativo": True},
-            {"Tabela": "Tipo Geral", "Opcao": "Infraestrutura", "Ativo": True},
-            # Setores
-            {"Tabela": "Setor", "Opcao": "Emergência (REA)",       "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "UTI Adulto",             "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "UTI Neonatal",           "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Enfermaria Clínica",     "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Enfermaria Cirúrgica",   "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Centro Cirúrgico",       "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "CME",                    "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Farmácia",               "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Laboratório",            "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Radiologia/Imagem",      "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Ambulatório",            "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Recepção/Admissão",      "Ativo": True},
-            {"Tabela": "Setor", "Opcao": "Outro",                  "Ativo": True},
-            # Categorias
-            {"Tabela": "Categoria", "Opcao": "Lesão por Pressão (LPP)",              "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Queda do Paciente",                    "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Falha na Segurança Medicamentosa",     "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Falha de Identificação do Paciente",   "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Infecção Relacionada à Assistência",   "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Falha em Procedimento/Cirurgia",       "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Falha em Equipamento/Dispositivo",     "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Reação Transfusional",                 "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Evento de Comunicação/Informação",     "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Violência / Agressão",                 "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Extubação não Planejada",              "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Saída não Autorizada do Paciente",     "Ativo": True},
-            {"Tabela": "Categoria", "Opcao": "Outro Incidente Assistencial",         "Ativo": True},
-            # Subcategorias de LPP
-            {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio I",    "Ativo": True},
-            {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio II",   "Ativo": True},
-            {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio III",  "Ativo": True},
-            {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio IV",   "Ativo": True},
-            {"Tabela": "Subcategoria_LPP", "Opcao": "Não Classificável", "Ativo": True},
-            {"Tabela": "Subcategoria_LPP", "Opcao": "Tecido Mucoso", "Ativo": True},
-            # Subcategorias de Queda
-            {"Tabela": "Subcategoria_Queda", "Opcao": "Queda da própria altura",     "Ativo": True},
-            {"Tabela": "Subcategoria_Queda", "Opcao": "Queda do leito",              "Ativo": True},
-            {"Tabela": "Subcategoria_Queda", "Opcao": "Queda durante transferência", "Ativo": True},
-            {"Tabela": "Subcategoria_Queda", "Opcao": "Queda no banheiro",           "Ativo": True},
-            {"Tabela": "Subcategoria_Queda", "Opcao": "Outro",                       "Ativo": True},
-            # Subcategorias Medicamento
-            {"Tabela": "Subcategoria_Med", "Opcao": "Dose errada",         "Ativo": True},
-            {"Tabela": "Subcategoria_Med", "Opcao": "Medicamento errado",  "Ativo": True},
-            {"Tabela": "Subcategoria_Med", "Opcao": "Via errada",          "Ativo": True},
-            {"Tabela": "Subcategoria_Med", "Opcao": "Horário errado",      "Ativo": True},
-            {"Tabela": "Subcategoria_Med", "Opcao": "Omissão de dose",     "Ativo": True},
-            {"Tabela": "Subcategoria_Med", "Opcao": "Paciente errado",     "Ativo": True},
-            {"Tabela": "Subcategoria_Med", "Opcao": "Reação adversa",      "Ativo": True},
-            # Gravidade (escala OMS)
-            {"Tabela": "Gravidade", "Opcao": "Near Miss (Quase Evento - não atingiu o paciente)", "Ativo": True},
-            {"Tabela": "Gravidade", "Opcao": "Sem Dano (atingiu, sem lesão)",                     "Ativo": True},
-            {"Tabela": "Gravidade", "Opcao": "Dano Leve (lesão leve/temporária)",                 "Ativo": True},
-            {"Tabela": "Gravidade", "Opcao": "Dano Moderado (lesão moderada/temporária)",         "Ativo": True},
-            {"Tabela": "Gravidade", "Opcao": "Dano Grave (lesão grave/permanente)",               "Ativo": True},
-            {"Tabela": "Gravidade", "Opcao": "Óbito",                                             "Ativo": True},
-            # Fatores Causadores
-            {"Tabela": "Fator Causador", "Opcao": "Déficit de pessoal / Sobrecarga",        "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Falha na comunicação entre equipes",     "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Falha na comunicação escrita/verbal",    "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Falta de treinamento / capacitação",     "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Equipamento com defeito",                "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Falta de material / insumo",             "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Ambiente inadequado / risco físico",     "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Falha no processo/protocolo",            "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Distração / interrupção",                "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Erro humano (sem negligência)",          "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Falha no sistema de medicação",         "Ativo": True},
-            {"Tabela": "Fator Causador", "Opcao": "Causa ainda não identificada",          "Ativo": True},
-        ]
-        df_conf = pd.DataFrame(opcoes_padrao)
-        df_conf.to_csv(CONFIG_FILE, index=False)
-        return df_conf
-    return pd.read_csv(CONFIG_FILE)
+    try:
+        conn = st.connection("postgresql", type="sql")
+        df = conn.query("SELECT * FROM config_tabelas", ttl=0)
+        if not df.empty:
+            return df
+    except:
+        pass
+
+    opcoes_padrao = [
+        {"Tabela": "Turno", "Opcao": "Manhã (07h–13h)",   "Ativo": True},
+        {"Tabela": "Turno", "Opcao": "Tarde (13h–19h)",   "Ativo": True},
+        {"Tabela": "Turno", "Opcao": "Noite (19h–07h)",   "Ativo": True},
+        {"Tabela": "Tipo Geral", "Opcao": "Assistencial",   "Ativo": True},
+        {"Tabela": "Tipo Geral", "Opcao": "Administrativa", "Ativo": True},
+        {"Tabela": "Tipo Geral", "Opcao": "Infraestrutura", "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Emergência (REA)",       "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "UTI Adulto",             "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "UTI Neonatal",           "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Enfermaria Clínica",     "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Enfermaria Cirúrgica",   "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Centro Cirúrgico",       "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "CME",                    "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Farmácia",               "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Laboratório",            "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Radiologia/Imagem",      "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Ambulatório",            "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Recepção/Admissão",      "Ativo": True},
+        {"Tabela": "Setor", "Opcao": "Outro",                  "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Lesão por Pressão (LPP)",              "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Queda do Paciente",                    "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Falha na Segurança Medicamentosa",     "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Falha de Identificação do Paciente",   "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Infecção Relacionada à Assistência",   "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Falha em Procedimento/Cirurgia",       "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Falha em Equipamento/Dispositivo",     "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Reação Transfusional",                 "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Evento de Comunicação/Informação",     "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Violência / Agressão",                 "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Extubação não Planejada",              "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Saída não Autorizada do Paciente",     "Ativo": True},
+        {"Tabela": "Categoria", "Opcao": "Outro Incidente Assistencial",         "Ativo": True},
+        {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio I",    "Ativo": True},
+        {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio II",   "Ativo": True},
+        {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio III",  "Ativo": True},
+        {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio IV",   "Ativo": True},
+        {"Tabela": "Subcategoria_LPP", "Opcao": "Não Classificável", "Ativo": True},
+        {"Tabela": "Subcategoria_LPP", "Opcao": "Tecido Mucoso", "Ativo": True},
+        {"Tabela": "Subcategoria_Queda", "Opcao": "Queda da própria altura",     "Ativo": True},
+        {"Tabela": "Subcategoria_Queda", "Opcao": "Queda do leito",              "Ativo": True},
+        {"Tabela": "Subcategoria_Queda", "Opcao": "Queda durante transferência", "Ativo": True},
+        {"Tabela": "Subcategoria_Queda", "Opcao": "Queda no banheiro",           "Ativo": True},
+        {"Tabela": "Subcategoria_Queda", "Opcao": "Outro",                       "Ativo": True},
+        {"Tabela": "Subcategoria_Med", "Opcao": "Dose errada",         "Ativo": True},
+        {"Tabela": "Subcategoria_Med", "Opcao": "Medicamento errado",  "Ativo": True},
+        {"Tabela": "Subcategoria_Med", "Opcao": "Via errada",          "Ativo": True},
+        {"Tabela": "Subcategoria_Med", "Opcao": "Horário errado",      "Ativo": True},
+        {"Tabela": "Subcategoria_Med", "Opcao": "Omissão de dose",     "Ativo": True},
+        {"Tabela": "Subcategoria_Med", "Opcao": "Paciente errado",     "Ativo": True},
+        {"Tabela": "Subcategoria_Med", "Opcao": "Reação adversa",      "Ativo": True},
+        {"Tabela": "Gravidade", "Opcao": "Near Miss (Quase Evento - não atingiu o paciente)", "Ativo": True},
+        {"Tabela": "Gravidade", "Opcao": "Sem Dano (atingiu, sem lesão)",                     "Ativo": True},
+        {"Tabela": "Gravidade", "Opcao": "Dano Leve (lesão leve/temporária)",                 "Ativo": True},
+        {"Tabela": "Gravidade", "Opcao": "Dano Moderado (lesão moderada/temporária)",         "Ativo": True},
+        {"Tabela": "Gravidade", "Opcao": "Dano Grave (lesão grave/permanente)",               "Ativo": True},
+        {"Tabela": "Gravidade", "Opcao": "Óbito",                                             "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Déficit de pessoal / Sobrecarga",        "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Falha na comunicação entre equipes",     "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Falha na comunicação escrita/verbal",    "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Falta de treinamento / capacitação",     "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Equipamento com defeito",                "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Falta de material / insumo",             "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Ambiente inadequado / risco físico",     "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Falha no processo/protocolo",            "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Ambiente inadequado / risco físico",     "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Distração / interrupção",                "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Erro humano (sem negligência)",          "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Falha no sistema de medicação",         "Ativo": True},
+        {"Tabela": "Fator Causador", "Opcao": "Causa ainda não identificada",          "Ativo": True},
+    ]
+    df_conf = pd.DataFrame(opcoes_padrao)
+    engine = st.connection("postgresql", type="sql").engine
+    df_conf.to_sql("config_tabelas", con=engine, if_exists="replace", index=False)
+    return df_conf
 
 def get_opcoes(df_conf, tabela):
     ops = df_conf[(df_conf["Tabela"] == tabela) & (df_conf["Ativo"] == True)]["Opcao"].tolist()
@@ -243,7 +248,6 @@ with st.form("form_notificacao", clear_on_submit=True):
 
     categoria = st.selectbox("Categoria do Incidente", get_opcoes(df_config, "Categoria"))
 
-    # Subcategorias dinâmicas conforme categoria
     subcategoria = ""
     medicamento  = ""
 
@@ -344,6 +348,6 @@ with st.form("form_notificacao", clear_on_submit=True):
                 "Status":                   "Novo"
             }
             df_dados = pd.concat([df_dados, pd.DataFrame([novo])], ignore_index=True)
-            df_dados.to_csv(DATA_FILE, index=False)
+            save_data(df_dados)
             st.success("✅ Notificação enviada com sucesso! Obrigado por contribuir com a segurança do nosso hospital.")
             st.balloons()
