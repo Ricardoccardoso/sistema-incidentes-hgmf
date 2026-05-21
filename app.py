@@ -16,8 +16,7 @@ st.markdown("""
 
 [data-testid="stSidebar"]          {display:none !important;}
 [data-testid="stAppDeployButton"]  {display:none !important;}
-[data-testid="stHeader"]           {display:none !important; visibility:hidden !important;}
-header                             {display:none !important; visibility:hidden !important;}
+[data-testid="stHeaderActionElements"] {display:none !important;} /* Esconde apenas os botões da direita */
 [data-testid="stDecoration"]       {display:none !important;}
 footer                             {display:none !important;}
 [data-testid="stSidebarNav"]       {display:none !important;}
