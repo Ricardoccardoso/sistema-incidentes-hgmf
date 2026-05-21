@@ -5,7 +5,7 @@ from datetime import datetime
 
 st.set_page_config(page_title="Gestão de Incidentes - HGMF", layout="wide")
 
-# Blindagem total para o usuário não ver absolutamente nada do painel
+# Oculta elementos do Streamlit mantendo a navegação de páginas funcional
 st.markdown("""
     <style>
     [data-testid="stSidebar"] {display: none !important;}
@@ -14,6 +14,7 @@ st.markdown("""
     header {display: none !important; visibility: hidden !important;}
     [data-testid="stDecoration"] {display: none !important;}
     footer {display: none !important;}
+    div[data-testid="stPageLink"] {display: none !important;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -27,8 +28,8 @@ def load_data():
     DATA_FILE = "dados_backup_nuvem.csv"
     if not os.path.exists(DATA_FILE):
         df = pd.DataFrame(columns=[
-            "Data_Registro", "Data_Incidente", "Turno", "Setor", "Cama_Leito", 
-            "Tipo_Geral", "Categoria_Incidente", "Medicamento_Envolvido", 
+            "Data_Registro", "Data_Incidente", "Turno", "Setor", "Cama_Leito",
+            "Tipo_Geral", "Categoria_Incidente", "Medicamento_Envolvido",
             "Gravidade", "Fatores_Causadores", "Descricao", "Relator", "Funcao_Relator"
         ])
         try:
@@ -59,8 +60,14 @@ def load_config():
             {"Tabela": "Categoria", "Opcao": "Falha na Segurança Medicamentosa", "Ativo": True},
             {"Tabela": "Gravidade", "Opcao": "Sem Dano", "Ativo": True},
             {"Tabela": "Gravidade", "Opcao": "Dano Leve", "Ativo": True},
+            {"Tabela": "Gravidade", "Opcao": "Dano Moderado", "Ativo": True},
+            {"Tabela": "Gravidade", "Opcao": "Dano Grave", "Ativo": True},
             {"Tabela": "Gravidade", "Opcao": "Óbito", "Ativo": True},
             {"Tabela": "Fator Causador", "Opcao": "Déficit de pessoal / Sobrecarga", "Ativo": True},
+            {"Tabela": "Fator Causador", "Opcao": "Falha na comunicação", "Ativo": True},
+            {"Tabela": "Fator Causador", "Opcao": "Falha no processo / protocolo", "Ativo": True},
+            {"Tabela": "Fator Causador", "Opcao": "Ambiente / Infraestrutura", "Ativo": True},
+            {"Tabela": "Fator Causador", "Opcao": "Falha de equipamento", "Ativo": True},
         ]
         df_conf = pd.DataFrame(opcoes_padrao)
         df_conf.to_csv(CONFIG_FILE, index=False)
@@ -74,36 +81,38 @@ def get_opcoes_ativas(df_conf, nome_tabela):
 df_config = load_config()
 df_dados = load_data()
 
+# ---- CABEÇALHO ----
 st.title("🏥 Hospital Geral Menandro de Faria")
 st.header("Notificação de Incidente Assistencial / Administrativo")
-st.info("Garantimos o sigilo absoluto do seu relato. Ajude-nos a melhorar a segurança do nosso hospital.")
+st.info("🔒 Garantimos o sigilo absoluto do seu relato. Ajude-nos a melhorar a segurança do nosso hospital.")
 
+# ---- FORMULÁRIO ----
 with st.form("form_publico", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
-        data_incidente = st.date_input("Data do Incidente")
-        turno = st.selectbox("Turno", get_opcoes_ativas(df_config, "Turno"))
-        setor = st.selectbox("Setor Ocorrência", get_opcoes_ativas(df_config, "Setor"))
-        cama = st.text_input("Leito / Cama")
-        tipo_geral = st.radio("Tipo", get_opcoes_ativas(df_config, "Tipo Geral"))
+        data_incidente = st.date_input("📅 Data do Incidente")
+        turno = st.selectbox("🕐 Turno", get_opcoes_ativas(df_config, "Turno"))
+        setor = st.selectbox("🏢 Setor de Ocorrência", get_opcoes_ativas(df_config, "Setor"))
+        cama = st.text_input("🛏️ Leito / Cama")
+        tipo_geral = st.radio("📋 Tipo de Incidente", get_opcoes_ativas(df_config, "Tipo Geral"))
     with col2:
-        categoria = st.selectbox("Categoria", get_opcoes_ativas(df_config, "Categoria"))
+        categoria = st.selectbox("🗂️ Categoria", get_opcoes_ativas(df_config, "Categoria"))
         medicamento = ""
         if categoria == "Falha na Segurança Medicamentosa":
-            medicamento = st.text_input("Medicamento Envolvido (Opcional)")
-        gravidade = st.select_slider("Gravidade do Dano", options=get_opcoes_ativas(df_config, "Gravidade"))
-        fatores = st.multiselect("Fatores Causadores", get_opcoes_ativas(df_config, "Fator Causador"))
-        
-    descricao = st.text_area("Descrição do Incidente")
+            medicamento = st.text_input("💊 Medicamento Envolvido (Opcional)")
+        gravidade = st.select_slider("⚠️ Gravidade do Dano", options=get_opcoes_ativas(df_config, "Gravidade"))
+        fatores = st.multiselect("🔎 Fatores Causadores (pode selecionar mais de um)", get_opcoes_ativas(df_config, "Fator Causador"))
+
+    descricao = st.text_area("📝 Descrição do Incidente", placeholder="Descreva o que ocorreu, onde e como...", height=120)
     st.markdown("---")
-    st.subheader("Identificação (Opcional)")
+    st.subheader("👤 Identificação (Opcional — não obrigatório)")
     c3, c4 = st.columns(2)
     with c3:
         relator = st.text_input("Seu Nome")
     with c4:
         funcao = st.text_input("Sua Função")
-        
-    submit = st.form_submit_button("📤 Enviar Notificação para o Núcleo", use_container_width=True)
+
+    submit = st.form_submit_button("📤 Enviar Notificação ao Núcleo de Segurança", use_container_width=True)
     if submit:
         novo_registro = {
             "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -125,3 +134,14 @@ with st.form("form_publico", clear_on_submit=True):
         df_dados.to_csv(DATA_FILE, index=False)
         st.success("✅ Notificação enviada com sucesso ao Núcleo de Segurança do Paciente!")
         st.balloons()
+
+# ---- LINK DISCRETO PARA O PAINEL DE GESTÃO ----
+st.markdown("---")
+st.markdown(
+    """<div style='text-align: right; padding-top: 4px;'>
+        <a href='/Gestao' target='_self' style='color: #bbb; font-size: 0.72em; text-decoration: none;'>
+            🔒 Acesso Restrito — Núcleo de Segurança
+        </a>
+    </div>""",
+    unsafe_allow_html=True
+)
