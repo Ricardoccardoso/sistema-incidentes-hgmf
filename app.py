@@ -4,10 +4,10 @@ import os
 from datetime import datetime
 import altair as alt
 
-# Configuração da página (Garante que a barra lateral comece fechada/oculta)
+# 1. Configuração Inicial (A barra lateral começa sempre oculta)
 st.set_page_config(page_title="Gestão de Incidentes - HGMF", layout="wide", initial_sidebar_state="collapsed")
 
-# Nomes dos arquivos de banco de dados locais
+# Nomes dos ficheiros locais
 CONFIG_FILE = "config_tabelas.csv"
 USERS_FILE = "config_usuarios.csv"
 
@@ -17,7 +17,7 @@ USERS_FILE = "config_usuarios.csv"
 GOOGLE_SHEET_URL = "COLE_AQUI_O_LINK_DA_SUA_PLANILHA_DO_GOOGLE"
 
 # ---------------------------------------------------------
-# FUNÇÕES DE BANCO DE DADOS E CARREGAMENTO
+# FUNÇÕES DE CARREGAMENTO DE DADOS
 # ---------------------------------------------------------
 def load_data():
     DATA_FILE = "dados_backup_nuvem.csv"
@@ -64,12 +64,8 @@ def load_config():
     return pd.read_csv(CONFIG_FILE)
 
 def load_users():
-    """Carrega ou inicializa a tabela de usuários e permissões corporativas"""
     if not os.path.exists(USERS_FILE):
-        usuarios_padrao = [
-            {"Usuario": "admin", "Senha": "admin123", "Permissao": "Acesso Total"}
-        ]
-        df_usr = pd.DataFrame(usuarios_padrao)
+        df_usr = pd.DataFrame([{"Usuario": "admin", "Senha": "admin123", "Permissao": "Acesso Total"}])
         df_usr.to_csv(USERS_FILE, index=False)
         return df_usr
     return pd.read_csv(USERS_FILE)
@@ -78,26 +74,23 @@ def get_opcoes_ativas(df_conf, nome_tabela):
     opcoes = df_conf[(df_conf["Tabela"] == nome_tabela) & (df_conf["Ativo"] == True)]["Opcao"].tolist()
     return opcoes if opcoes else ["Nenhuma opção ativa"]
 
-# Inicializar bases
+# Inicializar Estados e Variáveis
 df_config = load_config()
 df_dados = load_data()
 df_usuarios = load_users()
 
-# Usar Session State do Streamlit para controlar se a pessoa está logada
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
+if "tela_login" not in st.session_state:
+    st.session_state["tela_login"] = False
 if "usuario_ativo" not in st.session_state:
     st.session_state["usuario_ativo"] = ""
 if "permissao_ativa" not in st.session_state:
     st.session_state["permissao_ativa"] = ""
-if "quero_fazer_login" not in st.session_state:
-    st.session_state["quero_fazer_login"] = False
 
-# ---------------------------------------------------------
-# 🛡️ CONTROLE RESTRITO DE EXIBIÇÃO DA NAVBAR LATERAL
-# ---------------------------------------------------------
-# Se o usuário NÃO está tentando fazer login e NÃO está logado, a barra lateral some por completo!
-if not st.session_state["quero_fazer_login"] and not st.session_state["logado"]:
+# --- CONTROLO RIGOROSO DE VISIBILIDADE DA BARRA LATERAL ---
+if not st.session_state["logado"]:
+    # Se NÃO está logado, esconde obrigatoriamente a barra lateral e cabeçalhos do Streamlit
     st.markdown("""
         <style>
         [data-testid="stSidebar"] {display: none !important;}
@@ -107,130 +100,146 @@ if not st.session_state["quero_fazer_login"] and not st.session_state["logado"]:
         </style>
     """, unsafe_allow_html=True)
 else:
-    # Se ele clicou para logar, mantém apenas as ferramentas escondidas, mas mostra a navbar
+    # Se ESTÁ logado, mantém apenas os menus de desenvolvimento ocultos, mas liberta a barra lateral
     st.markdown("""<style>#MainMenu {visibility: hidden;} header {visibility: hidden;} footer {visibility: hidden;}</style>""", unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# MÓDULO 1: FORMULÁRIO PÚBLICO (ABRE DIRETO NO QR CODE)
-# ---------------------------------------------------------
+
+# =====================================================================
+# FLUXO 1: USUÁRIO NÃO LOGADO (VISÃO DO QR CODE / PÚBLICA)
+# =====================================================================
 if not st.session_state["logado"]:
-    st.title("🏥 Sistema de Gestão da Qualidade e Segurança do Paciente")
-    st.header("Novo Registro de Incidente")
-    st.info("Preencha os dados abaixo. As informações serão enviadas de forma sigilosa ao Núcleo de Segurança do Paciente.")
     
-    with st.form("form_incidente", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            data_incidente = st.date_input("Data do Incidente")
-            turno = st.selectbox("Turno da Ocorrência", get_opcoes_ativas(df_config, "Turno"))
-            setor = st.selectbox("Setor da Ocorrência", get_opcoes_ativas(df_config, "Setor"))
-            cama = st.text_input("Cama / Leito do Paciente")
-            tipo_geral = st.radio("Tipo de Ocorrência", get_opcoes_ativas(df_config, "Tipo Geral"))
-            
-        with col2:
-            categoria = st.selectbox("Categoria do Incidente", get_opcoes_ativas(df_config, "Categoria"))
-            medicamento = ""
-            if categoria == "Falha na Segurança Medicamentosa":
-                medicamento = st.text_input("⚠️ Nome do Medicamento Envolvido (Opcional)")
-                
-            gravidade = st.select_slider("Grau de Dano (Gravidade)", options=get_opcoes_ativas(df_config, "Gravidade"))
-            fatores = st.multiselect("Fatores Causadores", get_opcoes_ativas(df_config, "Fator Causador"))
-            
-        descricao = st.text_area("Descrição Breve do Incidente")
-        st.markdown("---")
-        st.subheader("Dados do Relator (Opcional)")
-        col3, col4 = st.columns(2)
-        with col3:
-            relator = st.text_input("Nome de quem está reportando")
-        with col4:
-            funcao = st.text_input("Função (ex: Enfermeiro, Médico)")
-        
-        submit = st.form_submit_button("📤 Enviar Notificação")
-        
-        if submit:
-            novo_registro = {
-                "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "Data_Incidente": str(data_incidente),
-                "Turno": turno,
-                "Setor": setor,
-                "Cama_Leito": cama,
-                "Tipo_Geral": tipo_geral,
-                "Categoria_Incidente": categoria,
-                "Medicamento_Envolvido": medicamento,
-                "Gravidade": gravidade,
-                "Fatores_Causadores": ", ".join(fatores),
-                "Descricao": descricao,
-                "Relator": relator,
-                "Funcao_Relator": funcao
-            }
-            DATA_FILE = "dados_backup_nuvem.csv"
-            df_dados = pd.concat([df_dados, pd.DataFrame([novo_registro])], ignore_index=True)
-            df_dados.to_csv(DATA_FILE, index=False)
-            st.success("✅ Incidente registrado com sucesso! Agradecemos sua colaboração.")
-            st.balloons()
+    # Cabeçalho Superior com Botão de Login Alinhado à Direita
+    col_tit, col_btn = st.columns([4, 1])
+    with col_tit:
+        st.title("🏥 Gestão da Qualidade e Segurança do Paciente")
+    with col_btn:
+        # Alterna entre mostrar o formulário ou a tela de login
+        if st.session_state["tela_login"]:
+            if st.button("⬅️ Voltar ao Formulário"):
+                st.session_state["tela_login"] = False
+                st.rerun()
+        else:
+            if st.button("🔐 Acesso Gestão"):
+                st.session_state["tela_login"] = True
+                st.rerun()
 
     st.markdown("---")
-    # Botão discreto no rodapé que ativa a barra lateral para fazer o login
-    if st.button("🔐 Área Restrita (Gestão)"):
-        st.session_state["quero_fazer_login"] = True
-        st.rerun()
 
-# ---------------------------------------------------------
-# TELA DE LOGIN NA BARRA LATERAL (APENAS QUANDO SOLICITADA)
-# ---------------------------------------------------------
-if st.session_state["quero_fazer_login"] and not st.session_state["logado"]:
-    st.sidebar.title("🔒 Autenticação de Gestão")
-    usuario = st.sidebar.text_input("👤 Usuário")
-    senha = st.sidebar.text_input("🔑 Senha", type="password")
-    
-    if st.sidebar.button("Entrar"):
-        # Validar credenciais contra a tabela de usuários cadastrados
-        validacao = df_usuarios[(df_usuarios["Usuario"] == usuario) & (df_usuarios["Senha"] == senha)]
+    # SUB-FLUXO A: TELA DE LOGIN CENTRALIZADA
+    if st.session_state["tela_login"]:
+        st.subheader("🔑 Autenticação do Núcleo de Segurança")
         
-        if not validacao.empty:
-            st.session_state["logado"] = True
-            st.session_state["usuario_ativo"] = usuario
-            st.session_state["permissao_ativa"] = validacao.iloc[0]["Permissao"]
-            st.session_state["quero_fazer_login"] = False
-            st.sidebar.success("Login efetuado!")
-            st.rerun()
-        else:
-            st.sidebar.error("❌ Usuário ou Senha inválidos!")
+        col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
+        with col_l2:
+            with st.form("form_login"):
+                user = st.text_input("👤 Usuário")
+                senha = st.text_input("🔑 Senha", type="password")
+                btn_entrar = st.form_submit_button("Entrar no Painel")
+                
+                if btn_entrar:
+                    validacao = df_usuarios[(df_usuarios["Usuario"] == user) & (df_usuarios["Senha"] == senha)]
+                    if not validacao.empty:
+                        st.session_state["logado"] = True
+                        st.session_state["tela_login"] = False
+                        st.session_state["usuario_ativo"] = user
+                        st.session_state["permissao_ativa"] = validacao.iloc[0]["Permissao"]
+                        st.success("Autenticação bem-sucedida!")
+                        st.rerun()
+                    else:
+                        st.error("❌ Usuário ou Senha incorretos!")
+
+    # SUB-FLUXO B: FORMULÁRIO PADRÃO DO HOSPITAL
+    else:
+        st.header("Novo Registro de Incidente")
+        st.info("Preencha os dados abaixo de forma sigilosa. As informações serão tratadas pelo Núcleo de Segurança do Paciente.")
+        
+        with st.form("form_incidente", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                data_incidente = st.date_input("Data do Incidente")
+                turno = st.selectbox("Turno da Ocorrência", get_opcoes_ativas(df_config, "Turno"))
+                setor = st.selectbox("Setor da Ocorrência", get_opcoes_ativas(df_config, "Setor"))
+                cama = st.text_input("Cama / Leito do Paciente")
+                tipo_geral = st.radio("Tipo de Ocorrência", get_opcoes_ativas(df_config, "Tipo Geral"))
+                
+            with col2:
+                categoria = st.selectbox("Categoria do Incidente", get_opcoes_ativas(df_config, "Categoria"))
+                medicamento = ""
+                if categoria == "Falha na Segurança Medicamentosa":
+                    medicamento = st.text_input("⚠️ Nome do Medicamento Envolvido (Opcional)")
+                    
+                gravidade = st.select_slider("Grau de Dano (Gravidade)", options=get_opcoes_ativas(df_config, "Gravidade"))
+                fatores = st.multiselect("Fatores Causadores", get_opcoes_ativas(df_config, "Fator Causador"))
+                
+            descricao = st.text_area("Descrição Breve do Incidente")
+            st.markdown("---")
+            st.subheader("Dados do Relator (Opcional - Garantimos o Anonimato)")
+            col3, col4 = st.columns(2)
+            with col3:
+                relator = st.text_input("Nome de quem está reportando")
+            with col4:
+                funcao = st.text_input("Função (ex: Enfermeiro, Médico)")
             
-    if st.sidebar.button("❌ Cancelar e Voltar"):
-        st.session_state["quero_fazer_login"] = False
-        st.rerun()
+            submit = st.form_submit_button("📤 Enviar Notificação")
+            
+            if submit:
+                novo_registro = {
+                    "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Data_Incidente": str(data_incidente),
+                    "Turno": turno,
+                    "Setor": setor,
+                    "Cama_Leito": cama,
+                    "Tipo_Geral": tipo_geral,
+                    "Categoria_Incidente": categoria,
+                    "Medicamento_Envolvido": medicamento,
+                    "Gravidade": gravidade,
+                    "Fatores_Causadores": ", ".join(fatores),
+                    "Descricao": descricao,
+                    "Relator": relator,
+                    "Funcao_Relator": funcao
+                }
+                DATA_FILE = "dados_backup_nuvem.csv"
+                df_dados = pd.concat([df_dados, pd.DataFrame([novo_registro])], ignore_index=True)
+                df_dados.to_csv(DATA_FILE, index=False)
+                st.success("✅ Incidente registrado com sucesso! Obrigado por colaborar com a segurança.")
+                st.balloons()
 
-# ---------------------------------------------------------
-# MÓDULO 2: ÁREA ADMINISTRATIVA COMPLETA (BLOQUEADA POR LOGIN)
-# ---------------------------------------------------------
+
+# =====================================================================
+# FLUXO 2: GESTOR AUTENTICADO (MÓDULO ADMINISTRATIVO COMPLETO)
+# =====================================================================
 if st.session_state["logado"]:
+    
+    # Barra Lateral Administrativa Ativa
     st.sidebar.title(f"Olá, {st.session_state['usuario_ativo']}!")
-    st.sidebar.info(f"Nível: {st.session_state['permissao_ativa']}")
+    st.sidebar.markdown(f"**Nível:** `{st.session_state['permissao_ativa']}`")
+    st.sidebar.markdown("---")
     
-    # Menu dinâmico baseado na permissão do usuário logado
-    opcoes_menu = []
+    # Criação dinâmica de menus baseada no nível de permissão do utilizador
+    opcoes_disponiveis = []
     if st.session_state["permissao_ativa"] in ["Acesso Total", "Apenas Relatórios"]:
-        opcoes_menu.append("📊 Painel de Indicadores")
+        opcoes_disponiveis.append("📊 Painel de Indicadores")
     if st.session_state["permissao_ativa"] in ["Acesso Total", "Apenas Configurar Tabelas"]:
-        opcoes_menu.append("⚙️ Configuração de Tabelas")
-        opcoes_menu.append("👥 Gerenciar Usuários")
+        opcoes_disponiveis.append("⚙️ Configuração de Tabelas")
+        opcoes_disponiveis.append("👥 Gerenciar Usuários")
         
-    menu_gestao = st.sidebar.radio("Navegação Administrativa:", opcoes_menu)
+    menu_gestao = st.sidebar.radio("Navegação Administrativa:", opcoes_disponiveis)
     
-    if st.sidebar.button("🚪 Sair do Sistema (Logout)"):
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚪 Sair do Painel (Logout)"):
         st.session_state["logado"] = False
         st.session_state["usuario_ativo"] = ""
         st.session_state["permissao_ativa"] = ""
         st.rerun()
 
-    # --- SUBMÓDULO: DASHBOARD ---
+    # --- ABA 1: DASHBOARD ---
     if menu_gestao == "📊 Painel de Indicadores":
         st.title("📊 Dashboard de Segurança do Paciente")
         st.markdown(f"[🔗 Abrir Planilha Base de Dados Completa no Google Sheets]({GOOGLE_SHEET_URL})")
         
         if df_dados.empty:
-            st.info("Ainda não existem dados de incidentes registrados.")
+            st.info("Ainda não existem dados registrados para exibir os gráficos.")
         else:
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Total de Notificações", len(df_dados))
@@ -255,9 +264,9 @@ if st.session_state["logado"]:
                 st.subheader("Incidentes por Categoria")
                 st.bar_chart(df_dados["Categoria_Incidente"].value_counts())
 
-    # --- SUBMÓDULO: CONFIGURAÇÃO DE MENUS ---
+    # --- ABA 2: CONFIGURAÇÃO DE MENUS ---
     elif menu_gestao == "⚙️ Configuração de Tabelas":
-        st.title("⚙️ Configuração de Tabelas dos Menus")
+        st.title("⚙️ Configuração de Tabelas")
         tabelas_disponiveis = df_config["Tabela"].unique()
         tabela_selecionada = st.selectbox("Selecione o Menu que deseja configurar:", tabelas_disponiveis)
         
@@ -265,6 +274,7 @@ if st.session_state["logado"]:
         col1, col2 = st.columns([2, 1])
         
         with col1:
+            st.subheader(f"Gerenciar opções de: {tabela_selecionada}")
             df_editado = st.data_editor(
                 df_filtro,
                 column_config={"Ativo": st.column_config.CheckboxColumn("Ativo (Mostrar)?", default=True), "Tabela": None},
@@ -291,34 +301,31 @@ if st.session_state["logado"]:
                         st.success("✅ Adicionado!")
                         st.rerun()
 
-    # --- SUBMÓDULO: GERENCIADOR DE USUÁRIOS E PERMISSÕES (NOVO) ---
+    # --- ABA 3: GERENCIADOR DE USUÁRIOS E PERMISSÕES CORPORATIVAS ---
     elif menu_gestao == "👥 Gerenciar Usuários":
-        st.title("👥 Controle de Usuários e Permissões Corporativas")
+        st.title("👥 Controle de Usuários e Permissões")
         
         col_u1, col_u2 = st.columns([2, 1])
-        
         with col_u1:
-            st.subheader("Lista de Usuários Cadastrados")
-            # Mostra todos os usuários e senhas atuais para a gestão controlar
+            st.subheader("Lista de Usuários com Acesso Administrativo")
             st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
-            st.warning("⚠️ O usuário padrão 'admin' com 'Acesso Total' não deve ser apagado para evitar bloqueios permanentes.")
+            st.caption("Nota: O utilizador 'admin' inicial não pode ser removido para proteção do sistema.")
             
         with col_u2:
-            st.subheader("➕ Cadastrar Novo Usuário")
+            st.subheader("➕ Criar Novo Usuário")
             novo_user = st.text_input("Nome do Usuário (Sem espaços)")
-            nova_senha = st.text_input("Senha do Usuário", type="password")
+            nova_senha = st.text_input("Senha de Acesso", type="password")
             permissao = st.selectbox("Nível de Permissão", ["Acesso Total", "Apenas Relatórios", "Apenas Configurar Tabelas"])
             
-            if st.button("💾 Salvar Usuário"):
+            if st.button("💾 Salvar Novo Usuário"):
                 if novo_user.strip() == "" or nova_senha.strip() == "":
-                    st.error("Usuário e Senha são obrigatórios!")
+                    st.error("Por favor, preencha o Usuário e a Senha!")
                 else:
-                    # Evitar duplicados
                     if (df_usuarios["Usuario"].str.lower() == novo_user.strip().lower()).any():
-                        st.error("Este nome de usuário já existe!")
+                        st.error("Esse nome de usuário já está cadastrado!")
                     else:
                         novo_usr_dict = {"Usuario": novo_user.strip(), "Senha": nova_senha, "Permissao": permissao}
                         df_usuarios = pd.concat([df_usuarios, pd.DataFrame([novo_usr_dict])], ignore_index=True)
                         df_usuarios.to_csv(USERS_FILE, index=False)
-                        st.success(f"✅ Usuário '{novo_user}' cadastrado com sucesso!")
+                        st.success(f"✅ Usuário '{novo_user}' criado com sucesso!")
                         st.rerun()
