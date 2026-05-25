@@ -1,129 +1,123 @@
 """
-db.py — camada de persistência Supabase (PostgreSQL na nuvem)
-Usado tanto pelo app.py (notificação) quanto pelo Gestao.py (painel de gestão).
+db.py — Camada de acesso ao Supabase para o sistema HGMF
+Substitui os arquivos CSV por tabelas PostgreSQL gerenciadas pelo Supabase.
 
-Configuração:
-  Crie um projeto gratuito em https://supabase.com
-  Vá em Project Settings > API e copie:
-    - Project URL  → SUPABASE_URL
-    - anon/public key → SUPABASE_KEY
-  Adicione essas duas variáveis em .streamlit/secrets.toml:
-    SUPABASE_URL = "https://xxxx.supabase.co"
-    SUPABASE_KEY = "eyJ..."
-
-Execute o SQL abaixo no Supabase SQL Editor para criar as tabelas:
-
-  CREATE TABLE IF NOT EXISTS incidentes (
-    id BIGSERIAL PRIMARY KEY,
-    "Data_Registro" TEXT, "Data_Incidente" TEXT, "Hora_Aproximada" TEXT,
-    "Turno" TEXT, "Setor" TEXT, "Cama_Leito" TEXT, "Tipo_Geral" TEXT,
-    "Categoria_Incidente" TEXT, "Subcategoria" TEXT, "Medicamento_Envolvido" TEXT,
-    "Gravidade" TEXT, "Dano_Paciente" TEXT, "Paciente_Foi_Comunicado" TEXT,
-    "Familiar_Foi_Comunicado" TEXT, "Medico_Foi_Comunicado" TEXT,
-    "Fatores_Causadores" TEXT, "Descricao" TEXT, "Acoes_Imediatas" TEXT,
-    "Sugestao_Melhoria" TEXT, "Relator" TEXT, "Funcao_Relator" TEXT, "Status" TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS config_tabelas (
-    id BIGSERIAL PRIMARY KEY,
-    "Tabela" TEXT, "Opcao" TEXT, "Ativo" BOOLEAN DEFAULT TRUE
-  );
-
-  CREATE TABLE IF NOT EXISTS usuarios (
-    id BIGSERIAL PRIMARY KEY,
-    "Usuario" TEXT UNIQUE, "Senha_Hash" TEXT,
-    "Permissao" TEXT, "Ativo" BOOLEAN DEFAULT TRUE, "Data_Criacao" TEXT
-  );
+Configuração necessária (uma única vez):
+  1. Crie uma conta gratuita em https://supabase.com
+  2. Crie um projeto
+  3. Execute o SQL de setup em supabase_setup.sql no SQL Editor do painel
+  4. Copie a URL e a chave anon do projeto em Configurações → API
+  5. Defina as variáveis de ambiente (ou use o arquivo .env):
+       SUPABASE_URL=https://xxxx.supabase.co
+       SUPABASE_KEY=eyJ...
+     No Streamlit Cloud, coloque-as em Settings → Secrets:
+       [supabase]
+       url = "https://xxxx.supabase.co"
+       key = "eyJ..."
 """
 
-import streamlit as st
-import pandas as pd
-from supabase import create_client, Client
-import hashlib
+from __future__ import annotations
 
-# ── Cliente Supabase ──────────────────────────────────────────────────────────
-@st.cache_resource
+import os
+import hashlib
+import pandas as pd
+import streamlit as st
+from datetime import datetime, date
+from supabase import create_client, Client
+
+
+# ─── Conexão ─────────────────────────────────────────────────────────────────
+
+@st.cache_resource(show_spinner=False)
 def get_client() -> Client:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
+    """Retorna o cliente Supabase, lendo credenciais dos Secrets do Streamlit
+    ou das variáveis de ambiente."""
+    try:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+    except (KeyError, FileNotFoundError):
+        url = os.environ.get("SUPABASE_URL", "")
+        key = os.environ.get("SUPABASE_KEY", "")
+
+    if not url or not key:
+        st.error(
+            "⚠️ Credenciais do Supabase não encontradas. "
+            "Configure SUPABASE_URL e SUPABASE_KEY nos Secrets do Streamlit "
+            "ou como variáveis de ambiente."
+        )
+        st.stop()
+
     return create_client(url, key)
 
 
-# ── INCIDENTES ────────────────────────────────────────────────────────────────
-COLUNAS_DADOS = [
-    "Data_Registro", "Data_Incidente", "Hora_Aproximada", "Turno", "Setor",
+# ─── Utilitários ─────────────────────────────────────────────────────────────
+
+def hash_senha(s: str) -> str:
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
+def _rows_to_df(rows: list[dict], columns: list[str]) -> pd.DataFrame:
+    """Converte lista de dicts (resposta Supabase) em DataFrame com colunas garantidas."""
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    df = pd.DataFrame(rows)
+    for col in columns:
+        if col not in df.columns:
+            df[col] = ""
+    return df[columns]
+
+
+# ─── Colunas esperadas ────────────────────────────────────────────────────────
+
+COLUNAS_INCIDENTES = [
+    "id", "Data_Registro", "Data_Incidente", "Hora_Aproximada", "Turno", "Setor",
     "Cama_Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
     "Medicamento_Envolvido", "Gravidade", "Dano_Paciente",
     "Paciente_Foi_Comunicado", "Familiar_Foi_Comunicado", "Medico_Foi_Comunicado",
     "Fatores_Causadores", "Descricao", "Acoes_Imediatas", "Sugestao_Melhoria",
-    "Relator", "Funcao_Relator", "Status"
+    "Relator", "Funcao_Relator", "Status",
 ]
 
+COLUNAS_CONFIG = ["id", "Tabela", "Opcao", "Ativo"]
+
+COLUNAS_USUARIOS = ["id", "Usuario", "Senha_Hash", "Permissao", "Ativo", "Data_Criacao"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INCIDENTES
+# ══════════════════════════════════════════════════════════════════════════════
+
 def load_data() -> pd.DataFrame:
-    try:
-        sb = get_client()
-        res = sb.table("incidentes").select("*").order("id").execute()
-        rows = res.data or []
-        if not rows:
-            return pd.DataFrame(columns=COLUNAS_DADOS)
-        df = pd.DataFrame(rows)
-        # Remove coluna id interna do Supabase para não conflitar com o código
-        if "id" in df.columns:
-            df = df.drop(columns=["id"])
-        for col in COLUNAS_DADOS:
-            if col not in df.columns:
-                df[col] = ""
-        return df[COLUNAS_DADOS]
-    except Exception as e:
-        st.error(f"Erro ao carregar incidentes: {e}")
-        return pd.DataFrame(columns=COLUNAS_DADOS)
+    sb = get_client()
+    res = sb.table("incidentes").select("*").order("Data_Registro", desc=True).execute()
+    return _rows_to_df(res.data or [], COLUNAS_INCIDENTES)
 
 
-def insert_incidente(novo: dict) -> bool:
-    """Insere um único registro na tabela incidentes."""
-    try:
-        sb = get_client()
-        # Garante que todos os campos existam
-        row = {col: novo.get(col, "") for col in COLUNAS_DADOS}
-        sb.table("incidentes").insert(row).execute()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao salvar incidente: {e}")
-        return False
+def save_incidente(novo: dict) -> None:
+    """Insere um novo registro de incidente."""
+    sb = get_client()
+    # Remove 'id' caso esteja presente (auto-gerado pelo banco)
+    novo.pop("id", None)
+    sb.table("incidentes").insert(novo).execute()
 
 
-def update_status(row_id: int, novo_status: str) -> bool:
-    """Atualiza somente o campo Status de um registro."""
-    try:
-        sb = get_client()
-        sb.table("incidentes").update({"Status": novo_status}).eq("id", row_id).execute()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao atualizar status: {e}")
-        return False
+def update_incidente(row_id: int | str, campos: dict) -> None:
+    """Atualiza campos de um incidente existente pelo id."""
+    sb = get_client()
+    campos.pop("id", None)
+    sb.table("incidentes").update(campos).eq("id", row_id).execute()
 
 
-def load_data_with_id() -> pd.DataFrame:
-    """Versão com coluna 'id' — usada no painel de gestão para atualização de status."""
-    try:
-        sb = get_client()
-        res = sb.table("incidentes").select("*").order("id").execute()
-        rows = res.data or []
-        if not rows:
-            df = pd.DataFrame(columns=["id"] + COLUNAS_DADOS)
-            return df
-        df = pd.DataFrame(rows)
-        for col in COLUNAS_DADOS:
-            if col not in df.columns:
-                df[col] = ""
-        return df
-    except Exception as e:
-        st.error(f"Erro ao carregar incidentes: {e}")
-        return pd.DataFrame(columns=["id"] + COLUNAS_DADOS)
+def delete_incidente(row_id: int | str) -> None:
+    sb = get_client()
+    sb.table("incidentes").delete().eq("id", row_id).execute()
 
 
-# ── CONFIGURAÇÕES DE TABELAS ──────────────────────────────────────────────────
-OPCOES_PADRAO = [
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIGURAÇÕES (menus/opções)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_OPCOES_PADRAO = [
     # Turno
     {"Tabela": "Turno", "Opcao": "Manhã (07h–13h)",   "Ativo": True},
     {"Tabela": "Turno", "Opcao": "Tarde (13h–19h)",   "Ativo": True},
@@ -161,26 +155,24 @@ OPCOES_PADRAO = [
     {"Tabela": "Categoria", "Opcao": "Saída não Autorizada do Paciente",     "Ativo": True},
     {"Tabela": "Categoria", "Opcao": "Outro Incidente Assistencial",         "Ativo": True},
     # Subcategorias LPP
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio I",         "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio II",        "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio III",       "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio IV",        "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Não Classificável", "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Tecido Mucoso",     "Ativo": True},
+    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio I",          "Ativo": True},
+    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio II",         "Ativo": True},
+    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio III",        "Ativo": True},
+    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio IV",         "Ativo": True},
+    {"Tabela": "Subcategoria_LPP", "Opcao": "Não Classificável",  "Ativo": True},
+    {"Tabela": "Subcategoria_LPP", "Opcao": "Tecido Mucoso",      "Ativo": True},
     # Subcategorias Queda
     {"Tabela": "Subcategoria_Queda", "Opcao": "Queda da própria altura",     "Ativo": True},
     {"Tabela": "Subcategoria_Queda", "Opcao": "Queda do leito",              "Ativo": True},
     {"Tabela": "Subcategoria_Queda", "Opcao": "Queda durante transferência", "Ativo": True},
     {"Tabela": "Subcategoria_Queda", "Opcao": "Queda no banheiro",           "Ativo": True},
-    {"Tabela": "Subcategoria_Queda", "Opcao": "Outro",                       "Ativo": True},
     # Subcategorias Medicamento
-    {"Tabela": "Subcategoria_Med", "Opcao": "Dose errada",        "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Medicamento errado", "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Via errada",         "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Horário errado",     "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Omissão de dose",    "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Paciente errado",    "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Reação adversa",     "Ativo": True},
+    {"Tabela": "Subcategoria_Med", "Opcao": "Dose incorreta",      "Ativo": True},
+    {"Tabela": "Subcategoria_Med", "Opcao": "Medicamento errado",  "Ativo": True},
+    {"Tabela": "Subcategoria_Med", "Opcao": "Via errada",          "Ativo": True},
+    {"Tabela": "Subcategoria_Med", "Opcao": "Horário errado",      "Ativo": True},
+    {"Tabela": "Subcategoria_Med", "Opcao": "Omissão de dose",     "Ativo": True},
+    {"Tabela": "Subcategoria_Med", "Opcao": "Paciente errado",     "Ativo": True},
     # Gravidade
     {"Tabela": "Gravidade", "Opcao": "Near Miss (Quase Evento - não atingiu o paciente)", "Ativo": True},
     {"Tabela": "Gravidade", "Opcao": "Sem Dano (atingiu, sem lesão)",                     "Ativo": True},
@@ -189,112 +181,81 @@ OPCOES_PADRAO = [
     {"Tabela": "Gravidade", "Opcao": "Dano Grave (lesão grave/permanente)",               "Ativo": True},
     {"Tabela": "Gravidade", "Opcao": "Óbito",                                             "Ativo": True},
     # Fatores Causadores
-    {"Tabela": "Fator Causador", "Opcao": "Déficit de pessoal / Sobrecarga",        "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falha na comunicação entre equipes",     "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falha na comunicação escrita/verbal",    "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falta de treinamento / capacitação",     "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Equipamento com defeito",                "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falta de material / insumo",             "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Ambiente inadequado / risco físico",     "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falha no processo/protocolo",            "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Distração / interrupção",                "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Erro humano (sem negligência)",          "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falha no sistema de medicação",          "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Causa ainda não identificada",           "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Comunicação inadequada",          "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Falha de processo/protocolo",     "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Sobrecarga de trabalho",          "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Equipamento inadequado/ausente",  "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Falta de treinamento",            "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Ambiente/infraestrutura",         "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Fator humano/distração",          "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Paciente não colaborativo",       "Ativo": True},
+    {"Tabela": "Fator Causador", "Opcao": "Outro",                           "Ativo": True},
 ]
 
 
 def load_config() -> pd.DataFrame:
-    try:
-        sb = get_client()
-        res = sb.table("config_tabelas").select("*").execute()
+    sb = get_client()
+    res = sb.table("config_tabelas").select("*").order("Tabela").execute()
+    rows = res.data or []
+    if not rows:
+        # Primeira execução: semeia opções padrão
+        sb.table("config_tabelas").insert(_OPCOES_PADRAO).execute()
+        res = sb.table("config_tabelas").select("*").order("Tabela").execute()
         rows = res.data or []
-        if not rows:
-            # Popula com os padrões na primeira execução
-            sb.table("config_tabelas").insert(OPCOES_PADRAO).execute()
-            return pd.DataFrame(OPCOES_PADRAO)
-        df = pd.DataFrame(rows)
-        if "id" in df.columns:
-            df = df.drop(columns=["id"])
-        return df
-    except Exception as e:
-        st.error(f"Erro ao carregar config: {e}")
-        return pd.DataFrame(OPCOES_PADRAO)
+    return _rows_to_df(rows, COLUNAS_CONFIG)
 
 
-def save_config_opcao(tabela: str, opcao: str, ativo: bool) -> bool:
-    """Altera o campo Ativo de uma opção existente."""
-    try:
-        sb = get_client()
-        sb.table("config_tabelas").update({"Ativo": ativo})\
-          .eq("Tabela", tabela).eq("Opcao", opcao).execute()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao salvar config: {e}")
-        return False
+def save_config_opcao(row_id: int | str, ativo: bool) -> None:
+    """Ativa/desativa uma opção de configuração."""
+    sb = get_client()
+    sb.table("config_tabelas").update({"Ativo": ativo}).eq("id", row_id).execute()
 
 
-def add_config_opcao(tabela: str, opcao: str) -> bool:
-    """Adiciona nova opção de configuração."""
-    try:
-        sb = get_client()
-        sb.table("config_tabelas").insert({"Tabela": tabela, "Opcao": opcao, "Ativo": True}).execute()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao adicionar opção: {e}")
-        return False
+def add_config_opcao(tabela: str, opcao: str) -> None:
+    sb = get_client()
+    sb.table("config_tabelas").insert({"Tabela": tabela, "Opcao": opcao, "Ativo": True}).execute()
 
 
-def get_opcoes(df_conf: pd.DataFrame, tabela: str):
+def get_opcoes(df_conf: pd.DataFrame, tabela: str) -> list[str]:
     ops = df_conf[(df_conf["Tabela"] == tabela) & (df_conf["Ativo"] == True)]["Opcao"].tolist()
     return ops if ops else ["Sem opções configuradas"]
 
 
-# ── USUÁRIOS ──────────────────────────────────────────────────────────────────
-def hash_senha(s: str) -> str:
-    return hashlib.sha256(s.encode()).hexdigest()
-
+# ══════════════════════════════════════════════════════════════════════════════
+# USUÁRIOS
+# ══════════════════════════════════════════════════════════════════════════════
 
 def load_users() -> pd.DataFrame:
-    try:
-        sb = get_client()
+    sb = get_client()
+    res = sb.table("usuarios").select("*").execute()
+    rows = res.data or []
+    if not rows:
+        # Cria usuário admin padrão na primeira execução
+        admin = {
+            "Usuario":      "admin",
+            "Senha_Hash":   hash_senha("admin123"),
+            "Permissao":    "Acesso Total",
+            "Ativo":        True,
+            "Data_Criacao": date.today().isoformat(),
+        }
+        sb.table("usuarios").insert(admin).execute()
         res = sb.table("usuarios").select("*").execute()
         rows = res.data or []
-        if not rows:
-            admin = {
-                "Usuario": "admin",
-                "Senha_Hash": hash_senha("admin123"),
-                "Permissao": "Acesso Total",
-                "Ativo": True,
-                "Data_Criacao": pd.Timestamp.now().strftime("%Y-%m-%d"),
-            }
-            sb.table("usuarios").insert(admin).execute()
-            return pd.DataFrame([admin])
-        df = pd.DataFrame(rows)
-        if "id" in df.columns:
-            df = df.drop(columns=["id"])
-        return df
-    except Exception as e:
-        st.error(f"Erro ao carregar usuários: {e}")
-        return pd.DataFrame(columns=["Usuario","Senha_Hash","Permissao","Ativo","Data_Criacao"])
+    return _rows_to_df(rows, COLUNAS_USUARIOS)
 
 
-def save_user(usuario: dict) -> bool:
-    """Insere ou atualiza usuário (upsert pelo campo Usuario)."""
-    try:
-        sb = get_client()
-        sb.table("usuarios").upsert(usuario, on_conflict="Usuario").execute()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao salvar usuário: {e}")
-        return False
+def save_user(novo: dict) -> None:
+    sb = get_client()
+    novo.pop("id", None)
+    sb.table("usuarios").insert(novo).execute()
 
 
-def delete_user(usuario: str) -> bool:
-    try:
-        sb = get_client()
-        sb.table("usuarios").delete().eq("Usuario", usuario).execute()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao remover usuário: {e}")
-        return False
+def update_user(row_id: int | str, campos: dict) -> None:
+    sb = get_client()
+    campos.pop("id", None)
+    sb.table("usuarios").update(campos).eq("id", row_id).execute()
+
+
+def delete_user(row_id: int | str) -> None:
+    sb = get_client()
+    sb.table("usuarios").delete().eq("id", row_id).execute()
