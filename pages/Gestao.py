@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
-import os
 import altair as alt
 import hashlib
 from datetime import datetime, date, timedelta
 import io
+import db  # camada de acesso ao Supabase
 
 st.set_page_config(
     page_title="Painel de Gestão — HGMF",
@@ -116,13 +116,10 @@ div[data-testid="stFormSubmitButton"] > button {
 """, unsafe_allow_html=True)
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
-DATA_FILE   = "dados_incidentes.csv"
-CONFIG_FILE = "config_tabelas.csv"
-USERS_FILE  = "config_usuarios.csv"
 SENHA_ADMIN_MESTRE = hashlib.sha256("sp#9198sider".encode()).hexdigest()
 
 COLUNAS_DADOS = [
-    "Data_Registro", "Data_Incidente", "Hora_Aproximada", "Turno", "Setor",
+    "id", "Data_Registro", "Data_Incidente", "Hora_Aproximada", "Turno", "Setor",
     "Cama_Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
     "Medicamento_Envolvido", "Gravidade", "Dano_Paciente",
     "Paciente_Foi_Comunicado", "Familiar_Foi_Comunicado", "Medico_Foi_Comunicado",
@@ -148,61 +145,26 @@ def _cor_gravidade(g: str) -> str:
             return v
     return "semDano"
 
-# ─── Funções de dados ─────────────────────────────────────────────────────────
-def hash_senha(s: str) -> str:
-    return hashlib.sha256(s.encode()).hexdigest()
+# ─── Funções delegadas ao módulo db ──────────────────────────────────────────
+hash_senha  = db.hash_senha
+load_data   = db.load_data
+load_config = db.load_config
+load_users  = db.load_users
 
-def load_data() -> pd.DataFrame:
-    if not os.path.exists(DATA_FILE):
-        df = pd.DataFrame(columns=COLUNAS_DADOS)
-        df.to_csv(DATA_FILE, index=False)
-        return df
-    df = pd.read_csv(DATA_FILE)
-    for col in COLUNAS_DADOS:
-        if col not in df.columns:
-            df[col] = ""
-    return df
+def save_data(df):
+    """Não mais usado como dump completo. Alterações pontuais usam db.update_incidente."""
+    pass
 
-def save_data(df: pd.DataFrame):
-    df.to_csv(DATA_FILE, index=False)
+def save_config(df):
+    """Compatibilidade: re-salva alterações via db (chamado nos pontos de edição abaixo)."""
+    pass
 
-def load_config() -> pd.DataFrame:
-    if not os.path.exists(CONFIG_FILE):
-        return pd.DataFrame(columns=["Tabela", "Opcao", "Ativo"])
-    return pd.read_csv(CONFIG_FILE)
+def save_users(df):
+    """Compatibilidade: re-salva via db (chamado nos pontos de edição abaixo)."""
+    pass
 
-def save_config(df: pd.DataFrame):
-    df.to_csv(CONFIG_FILE, index=False)
-
-def load_users() -> pd.DataFrame:
-    if not os.path.exists(USERS_FILE):
-        df = pd.DataFrame([{
-            "Usuario": "admin",
-            "Senha_Hash": hash_senha("admin123"),
-            "Permissao": "Acesso Total",
-            "Ativo": True,
-            "Data_Criacao": datetime.now().strftime("%Y-%m-%d"),
-        }])
-        df.to_csv(USERS_FILE, index=False)
-        return df
-    df = pd.read_csv(USERS_FILE)
-    # Retrocompatibilidade: migrar senhas em texto plano
-    if "Senha_Hash" not in df.columns and "Senha" in df.columns:
-        df["Senha_Hash"] = df["Senha"].apply(lambda x: hash_senha(str(x)))
-        df.drop(columns=["Senha"], inplace=True)
-        df.to_csv(USERS_FILE, index=False)
-    if "Ativo" not in df.columns:
-        df["Ativo"] = True
-    if "Data_Criacao" not in df.columns:
-        df["Data_Criacao"] = ""
-    return df
-
-def save_users(df: pd.DataFrame):
-    df.to_csv(USERS_FILE, index=False)
-
-def get_opcoes(df_conf: pd.DataFrame, tabela: str):
-    ops = df_conf[(df_conf["Tabela"] == tabela) & (df_conf["Ativo"] == True)]["Opcao"].tolist()
-    return ops if ops else []
+def get_opcoes(df_conf, tabela):
+    return db.get_opcoes(df_conf, tabela)
 
 # ─── Session state ────────────────────────────────────────────────────────────
 for k, v in {
@@ -565,8 +527,8 @@ elif menu == "📋 Notificações":
                     )
                 with col_s2:
                     if st.button("💾 Salvar Status", key=f"btn_status_{idx}"):
-                        df_dados.at[idx, "Status"] = novo_status
-                        save_data(df_dados)
+                        row_id = row.get("id")
+                        db.update_incidente(row_id, {"Status": novo_status})
                         st.success("Status atualizado!")
                         st.rerun()
 
@@ -764,9 +726,9 @@ elif menu == "⚙️ Configurar Menus":
         )
         if st.button("💾 Gravar Alterações", type="primary"):
             for _, r in df_ed.iterrows():
-                mask = (df_config["Tabela"] == tab_sel) & (df_config["Opcao"] == r["Opcao"])
-                df_config.loc[mask, "Ativo"] = r["Ativo"]
-            save_config(df_config)
+                row_id = r.get("id")
+                if row_id:
+                    db.save_config_opcao(row_id, bool(r["Ativo"]))
             st.success("✅ Configuração salva!")
             st.rerun()
 
@@ -778,9 +740,7 @@ elif menu == "⚙️ Configurar Menus":
                 existe = ((df_config["Tabela"] == tab_sel) &
                           (df_config["Opcao"].str.lower() == n_op.strip().lower())).any()
                 if not existe:
-                    nova_linha = {"Tabela": tab_sel, "Opcao": n_op.strip(), "Ativo": True}
-                    df_config = pd.concat([df_config, pd.DataFrame([nova_linha])], ignore_index=True)
-                    save_config(df_config)
+                    db.add_config_opcao(tab_sel, n_op.strip())
                     st.success("Adicionado!")
                     st.rerun()
                 else:
@@ -816,17 +776,15 @@ elif menu == "👥 Usuários":
         col_pc, col_pd = st.columns(2)
         with col_pc:
             if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
-                idx_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].index[0]
-                df_usuarios.at[idx_u, "Permissao"] = nova_perm
-                df_usuarios.at[idx_u, "Ativo"]     = novo_ativo
-                save_users(df_usuarios)
+                row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
+                db.update_user(row_u["id"], {"Permissao": nova_perm, "Ativo": novo_ativo})
                 st.success("Usuário atualizado!")
                 st.rerun()
         with col_pd:
             if usuario_sel != st.session_state["user"] and usuario_sel != "admin":
                 if st.button("🗑️ Remover Usuário", use_container_width=True):
-                    df_usuarios = df_usuarios[df_usuarios["Usuario"] != usuario_sel].reset_index(drop=True)
-                    save_users(df_usuarios)
+                    row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
+                    db.delete_user(row_u["id"])
                     st.success("Usuário removido.")
                     st.rerun()
 
@@ -836,9 +794,8 @@ elif menu == "👥 Usuários":
         nova_senha_admin = st.text_input("Nova Senha", type="password", key="nova_senha_admin")
         if st.button("Redefinir Senha", use_container_width=True):
             if nova_senha_admin.strip():
-                idx_t = df_usuarios[df_usuarios["Usuario"] == usr_troca].index[0]
-                df_usuarios.at[idx_t, "Senha_Hash"] = hash_senha(nova_senha_admin)
-                save_users(df_usuarios)
+                row_t = df_usuarios[df_usuarios["Usuario"] == usr_troca].iloc[0]
+                db.update_user(row_t["id"], {"Senha_Hash": hash_senha(nova_senha_admin)})
                 st.success(f"Senha de '{usr_troca}' redefinida com sucesso!")
             else:
                 st.warning("Digite a nova senha.")
@@ -871,8 +828,7 @@ elif menu == "👥 Usuários":
                         "Ativo":        True,
                         "Data_Criacao": date.today().strftime("%Y-%m-%d"),
                     }
-                    df_usuarios = pd.concat([df_usuarios, pd.DataFrame([novo_usr])], ignore_index=True)
-                    save_users(df_usuarios)
+                    db.save_user(novo_usr)
                     st.success(f"Usuário '{n_user.strip()}' criado com sucesso!")
                     st.rerun()
 
