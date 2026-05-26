@@ -560,7 +560,7 @@ elif menu == "📋 Notificações":
                             cur_date = pd.to_datetime(row.get('Data_Incidente')).date()
                         except Exception:
                             cur_date = date.today()
-                        new_data = st.date_input('Data do Incidente', value=cur_date)
+                        new_data = st.date_input('Data do Incidente', value=cur_date, format="DD/MM/YYYY")
                         ops = get_opcoes(df_config, 'Turno')
                         cur_turno = row.get('Turno','')
                         try:
@@ -573,10 +573,14 @@ elif menu == "📋 Notificações":
                         new_nome = st.text_input('Nome do Paciente', value=row.get('Nome_Paciente','') or '')
                         # data de nascimento
                         try:
-                            cur_nasc = pd.to_datetime(row.get('Data_Nascimento')).date()
+                            val = row.get('Data_Nascimento')
+                            if val and str(val).strip():
+                                cur_nasc = pd.to_datetime(val).date()
+                            else:
+                                cur_nasc = date(2000, 1, 1)
                         except Exception:
                             cur_nasc = date(2000,1,1)
-                        new_nasc = st.date_input('Data de Nascimento', value=cur_nasc)
+                        new_nasc = st.date_input('Data de Nascimento', value=cur_nasc, format="DD/MM/YYYY")
                         new_descricao = st.text_area('Descrição completa', value=row.get('Descricao',''))
                         new_acoes = st.text_area('Ações Imediatas', value=row.get('Acoes_Imediatas',''))
                         new_sug = st.text_area('Sugestão de melhoria', value=row.get('Sugestao_Melhoria',''))
