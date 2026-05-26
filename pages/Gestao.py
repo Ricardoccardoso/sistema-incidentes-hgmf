@@ -799,27 +799,29 @@ elif menu == "⚙️ Configurar Menus":
 
     with col_t1:
         st.markdown(f"**Opções do menu: {tab_sel}**")
+        df_ed = df_f2.copy()
+        df_ed["Excluir"] = False
         df_ed = st.data_editor(
-            df_f2,
+            df_ed,
             column_config={
-                "Ativo":  st.column_config.CheckboxColumn("Ativo?"),
-                "Tabela": None,
+                "Ativo":   st.column_config.CheckboxColumn("Ativo?"),
+                "Excluir": st.column_config.CheckboxColumn("✖"),
+                "Tabela":  None,
             },
             disabled=["Tabela"],
             hide_index=True,
             use_container_width=True
         )
-        if st.button("💾 Gravar Alterações", type="primary"):
-            invalid = False
-            for _, r in df_ed.iterrows():
-                opcao = str(r.get("Opcao", "")).strip()
-                if not opcao:
-                    invalid = True
-                    break
-            if invalid:
-                st.warning("Cada opção de menu deve ter um nome válido.")
+        if st.button("💾 Salvar Alterações", type="primary"):
+            invalid = df_ed[(df_ed["Excluir"] != True) & df_ed["Opcao"].astype(str).str.strip().eq("")]
+            if not invalid.empty:
+                st.warning("Cada opção de menu deve ter um nome válido ou ser marcada para exclusão.")
             else:
-                for _, r in df_ed.iterrows():
+                for _, r in df_ed[df_ed["Excluir"] == True].iterrows():
+                    row_id = r.get("id")
+                    if row_id:
+                        db.delete_config_opcao(row_id)
+                for _, r in df_ed[df_ed["Excluir"] != True].iterrows():
                     row_id = r.get("id")
                     if row_id:
                         db.save_config_opcao(row_id, str(r["Opcao"]).strip(), bool(r["Ativo"]))
@@ -842,16 +844,7 @@ elif menu == "⚙️ Configurar Menus":
             else:
                 st.warning("Digite um nome.")
 
-        st.markdown("**🗑️ Excluir Opção**")
-        if not df_f2.empty:
-            opcao_excluir = st.selectbox("Opção para excluir", df_f2["Opcao"].tolist(), key="opcao_excluir")
-            if st.button("Excluir Opção", use_container_width=True, key="btn_excluir_opcao"):
-                row_id = df_f2[df_f2["Opcao"] == opcao_excluir]["id"].iloc[0]
-                db.delete_config_opcao(row_id)
-                st.success("Opção excluída.")
-                st.rerun()
-        else:
-            st.info("Nenhuma opção disponível para exclusão.")
+        st.markdown("*Marque as linhas com ✖ para excluir as opções e clique em **Gravar Alterações**.*")
 
     st.markdown("---")
     st.subheader("⚙️ Campos Obrigatórios")

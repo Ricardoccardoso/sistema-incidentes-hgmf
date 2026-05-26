@@ -171,7 +171,7 @@ with st.form("form_notificacao", clear_on_submit=True):
     with r3:
         nome_paciente = st.text_input(label("Nome_Paciente", "Nome do Paciente"), placeholder="Ex: João da Silva")
 
-    s1, s2 = st.columns([1.5, 1])
+    s1, s2 = st.columns([1.1, 0.4])
     with s1:
         data_nasc = st.date_input(label("Data_Nascimento", "Data de Nascimento do Paciente"), value=date(2000,1,1))
     with s2:

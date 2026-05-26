@@ -228,12 +228,15 @@ def load_field_flags() -> pd.DataFrame:
         sb.table("config_campos").insert(default_campos).execute()
         res = sb.table("config_campos").select("*").order("Campo").execute()
         rows = res.data or []
-    return _rows_to_df(rows, ["id", "Campo", "Obrigatorio"])
+    df = _rows_to_df(rows, ["id", "Campo", "Obrigatorio"])
+    if "Obrigatorio" in df.columns:
+        df["Obrigatorio"] = df["Obrigatorio"].apply(_to_bool)
+    return df
 
 
-def save_field_flag(row_id: int | str, obrigatorio: bool) -> None:
+def save_field_flag(row_id: int | str, obrigatorio: bool | str) -> None:
     sb = get_client()
-    sb.table("config_campos").update({"Obrigatorio": obrigatorio}).eq("id", row_id).execute()
+    sb.table("config_campos").update({"Obrigatorio": _to_bool(obrigatorio)}).eq("id", row_id).execute()
 
 
 def save_config_opcao(row_id: int | str, opcao: str, ativo: bool) -> None:
