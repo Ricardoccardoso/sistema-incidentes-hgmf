@@ -138,7 +138,12 @@ with st.form("form_notificacao", clear_on_submit=True):
     st.markdown('<div class="secao-titulo">📅 Dados do Evento</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([2, 2, 2])
     with c1:
-        data_incidente = st.date_input("Data do Incidente", value=date.today(), max_value=date.today())
+        data_incidente = st.date_input(
+            "Data do Incidente",
+            value=date.today(),
+            max_value=date.today(),
+            format="DD/MM/YYYY"
+        )
     with c2:
         turno = st.selectbox("Hora/Turno do Incidente", get_opcoes(df_config, "Turno"))
     with c3:
@@ -165,15 +170,23 @@ with st.form("form_notificacao", clear_on_submit=True):
     st.markdown('<div class="secao-titulo">📝 Dados do Relato / Paciente</div>', unsafe_allow_html=True)
     r1, r2, r3 = st.columns([1.5, 1.5, 4])
     with r1:
-        data_relato = st.date_input(label("Data_Relato", "Data do Relato"), value=date.today())
+        data_relato = st.date_input(
+            label("Data_Relato", "Data do Relato"),
+            value=date.today(),
+            format="DD/MM/YYYY"
+        )
     with r2:
         hora_relato = st.time_input(label("Hora_Relato", "Hora do Relato"))
     with r3:
         nome_paciente = st.text_input(label("Nome_Paciente", "Nome do Paciente"), placeholder="Ex: João da Silva")
 
-    s1, s2 = st.columns([1.1, 0.4])
+    s1, s2 = st.columns([1, 2])
     with s1:
-        data_nasc = st.date_input(label("Data_Nascimento", "Data de Nascimento do Paciente"), value=date(2000,1,1))
+        data_nasc = st.date_input(
+            label("Data_Nascimento", "Data de Nascimento do Paciente"),
+            value=date(2000,1,1),
+            format="DD/MM/YYYY"
+        )
     with s2:
         pass
 
