@@ -547,8 +547,8 @@ elif menu == "📋 Notificações":
                 st.markdown("**Sugestão de Melhoria**")
                 st.warning(row.get("Sugestao_Melhoria",""))
 
-            # Edição (administrador)
-            if perm == "Acesso Total":
+            # Edição (apenas administrador - não atribuível)
+            if st.session_state.get("user") == "admin":
                 st.markdown('---')
                 if st.button('✏️ Editar registro', key=f'edit_btn_{idx}'):
                     st.session_state[f'edit_{idx}'] = True
