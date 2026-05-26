@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import base64
 from datetime import datetime, date
 import db  # camada de acesso ao Supabase
 
@@ -118,10 +119,26 @@ if not os.path.exists(logo_path):
     logo_path = "logo.png"
 
 if os.path.exists(logo_path):
-    st.image(logo_path, width=140)
-    st.markdown('<div style="text-align:center; margin-bottom:8px;">'
-                            '<h1 style="margin:6px 0 0; font-size:1.25rem">Hospital Geral Menandro de Faria</h1>'
-                            '<p style="margin:0; color:#546e7a">Núcleo de Segurança do Paciente — Notificação de Incidente</p></div>', unsafe_allow_html=True)
+    try:
+        with open(logo_path, "rb") as f:
+            b = f.read()
+        b64 = base64.b64encode(b).decode()
+        img_tag = f'<img src="data:image/png;base64,{b64}" style="height:76px; display:block; margin:0 auto 8px;" />'
+        st.markdown(f"""
+        <div class="cabecalho">
+            {img_tag}
+            <h1 style="margin:6px 0 0; font-size:1.25rem">Hospital Geral Menandro de Faria</h1>
+            <p style="margin:0; color:#546e7a">Núcleo de Segurança do Paciente — Notificação de Incidente</p>
+        </div>
+        """, unsafe_allow_html=True)
+    except Exception:
+        # fallback para exibição sem imagem
+        st.markdown("""
+        <div class="cabecalho">
+            <h1>🏥 Hospital Geral Menandro de Faria</h1>
+            <p>Núcleo de Segurança do Paciente — Notificação de Incidente</p>
+        </div>
+        """, unsafe_allow_html=True)
 else:
     st.markdown("""
     <div class="cabecalho">
