@@ -128,7 +128,7 @@ if os.path.exists(logo_path):
         <div class="cabecalho">
             {img_tag}
             <h1 style="margin:6px 0 0; font-size:1.25rem">Hospital Geral Menandro de Faria</h1>
-            <p style="margin:0; color:#546e7a">Núcleo de Segurança do Paciente — Notificação de Incidente</p>
+            <p style="margin:0; color:#bbdefb">Núcleo de Segurança do Paciente — Notificação de Incidente</p>
         </div>
         """, unsafe_allow_html=True)
     except Exception:
@@ -235,7 +235,7 @@ with st.form("form_notificacao", clear_on_submit=True):
 
     elif categoria == "Queda do Paciente":
         subcategoria = st.selectbox("Tipo de Queda", get_opcoes(df_config, "Subcategoria_Queda"))
-        st.info("💡 Lembre-se de preencher o Boletim de Queda físico no setor, se aplicável.")
+        # Removido lembrete solicitado pelo usuário
 
     elif categoria == "Falha na Segurança Medicamentosa":
         subcategoria = st.selectbox("Tipo de Falha Medicamentosa", get_opcoes(df_config, "Subcategoria_Med"))
