@@ -119,11 +119,11 @@ div[data-testid="stFormSubmitButton"] > button {
 SENHA_ADMIN_MESTRE = hashlib.sha256("sp#9198sider".encode()).hexdigest()
 
 COLUNAS_DADOS = [
-    "id", "Data_Registro", "Data_Incidente", "Hora_Aproximada", "Turno", "Setor",
-    "Cama_Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
-    "Medicamento_Envolvido", "Gravidade", "Dano_Paciente",
-    "Paciente_Foi_Comunicado", "Familiar_Foi_Comunicado", "Medico_Foi_Comunicado",
+    "id", "Data_Registro", "Data_Incidente", "Turno", "Setor",
+    "Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
+    "Medicamento_Envolvido", "Gravidade",
     "Fatores_Causadores", "Descricao", "Acoes_Imediatas", "Sugestao_Melhoria",
+    "Data_Relato", "Hora_Relato", "Nome_Paciente", "Data_Nascimento",
     "Relator", "Funcao_Relator", "Status"
 ]
 
@@ -484,22 +484,23 @@ elif menu == "📋 Notificações":
             d1, d2 = st.columns(2)
             with d1:
                 st.markdown("**Dados do Evento**")
-                st.write(f"- Data/Hora: {str(row.get('Data_Incidente',''))[:10]} às {row.get('Hora_Aproximada','')}")
-                st.write(f"- Turno: {row.get('Turno','')}")
-                st.write(f"- Setor: {row.get('Setor','')} | Leito: {row.get('Cama_Leito','')}")
+                st.write(f"- Data do Incidente: {str(row.get('Data_Incidente',''))[:10]}")
+                st.write(f"- Hora/Turno: {row.get('Turno','')}")
+                st.write(f"- Setor: {row.get('Setor','')} | Leito: {row.get('Leito','')}")
                 st.write(f"- Tipo: {row.get('Tipo_Geral','')}")
                 st.write(f"- Categoria: {row.get('Categoria_Incidente','')}")
                 if row.get("Subcategoria"):
                     st.write(f"- Subcategoria: {row.get('Subcategoria','')}")
                 if row.get("Medicamento_Envolvido"):
                     st.write(f"- Medicamento: {row.get('Medicamento_Envolvido','')}")
+                # dados do relato/paciente
+                st.write(f"- Data do Relato: {str(row.get('Data_Relato',''))[:10]}")
+                st.write(f"- Hora do Relato: {row.get('Hora_Relato','')}")
+                st.write(f"- Paciente: {row.get('Nome_Paciente','')}")
+                st.write(f"- Data Nascimento: {str(row.get('Data_Nascimento',''))[:10]}")
             with d2:
-                st.markdown("**Gravidade e Comunicação**")
+                st.markdown("**Gravidade**")
                 st.write(f"- Gravidade: {row.get('Gravidade','')}")
-                st.write(f"- Dano: {row.get('Dano_Paciente','') or 'Não informado'}")
-                st.write(f"- Paciente comunicado: {row.get('Paciente_Foi_Comunicado','')}")
-                st.write(f"- Familiar comunicado: {row.get('Familiar_Foi_Comunicado','')}")
-                st.write(f"- Médico comunicado: {row.get('Medico_Foi_Comunicado','')}")
 
             st.markdown("**Fatores Causadores**")
             st.write(row.get("Fatores_Causadores","Não informado") or "Não informado")
@@ -514,6 +515,55 @@ elif menu == "📋 Notificações":
             if row.get("Sugestao_Melhoria"):
                 st.markdown("**Sugestão de Melhoria**")
                 st.warning(row.get("Sugestao_Melhoria",""))
+
+            # Edição (administrador)
+            if perm == "Acesso Total":
+                st.markdown('---')
+                if st.button('✏️ Editar registro', key=f'edit_btn_{idx}'):
+                    st.session_state[f'edit_{idx}'] = True
+                if st.session_state.get(f'edit_{idx}', False):
+                    with st.form(f'edit_form_{idx}'):
+                        # pré-preenche valores atuais
+                        cur_date = None
+                        try:
+                            cur_date = pd.to_datetime(row.get('Data_Incidente')).date()
+                        except Exception:
+                            cur_date = date.today()
+                        new_data = st.date_input('Data do Incidente', value=cur_date)
+                        ops = get_opcoes(df_config, 'Turno')
+                        cur_turno = row.get('Turno','')
+                        try:
+                            idx_turno = ops.index(cur_turno) if cur_turno in ops else 0
+                        except Exception:
+                            idx_turno = 0
+                        new_turno = st.selectbox('Hora/Turno do Incidente', ops, index=idx_turno)
+                        new_setor = st.selectbox('Setor', get_opcoes(df_config, 'Setor'), index=0)
+                        new_leito = st.text_input('Leito', value=row.get('Leito',''))
+                        new_nome = st.text_input('Nome do Paciente', value=row.get('Nome_Paciente','') or '')
+                        # data de nascimento
+                        try:
+                            cur_nasc = pd.to_datetime(row.get('Data_Nascimento')).date()
+                        except Exception:
+                            cur_nasc = date(2000,1,1)
+                        new_nasc = st.date_input('Data de Nascimento', value=cur_nasc)
+                        new_descricao = st.text_area('Descrição completa', value=row.get('Descricao',''))
+                        new_acoes = st.text_area('Ações Imediatas', value=row.get('Acoes_Imediatas',''))
+                        new_sug = st.text_area('Sugestão de melhoria', value=row.get('Sugestao_Melhoria',''))
+                        if st.form_submit_button('💾 Salvar alterações'):
+                            campos = {
+                                'Data_Incidente': str(new_data),
+                                'Turno': new_turno,
+                                'Setor': new_setor,
+                                'Leito': new_leito,
+                                'Nome_Paciente': new_nome,
+                                'Data_Nascimento': str(new_nasc),
+                                'Descricao': new_descricao,
+                                'Acoes_Imediatas': new_acoes,
+                                'Sugestao_Melhoria': new_sug
+                            }
+                            db.update_incidente(row.get('id'), campos)
+                            st.success('Alterações salvas!')
+                            st.rerun()
 
             # Gerenciamento de status
             if perm in ["Acesso Total", "Apenas Relatórios"]:
@@ -599,7 +649,7 @@ elif menu == "📈 Relatórios":
         st.metric("Total de Incidentes Graves", len(df_gr))
         if not df_gr.empty:
             st.dataframe(df_gr[["Data_Incidente","Setor","Categoria_Incidente","Gravidade",
-                                  "Dano_Paciente","Descricao","Relator"]],
+                                  "Nome_Paciente","Data_Nascimento","Descricao","Relator"]],
                          use_container_width=True, hide_index=True)
 
     elif tipo_rel == "Notificações Pendentes de Análise":
@@ -747,6 +797,33 @@ elif menu == "⚙️ Configurar Menus":
                     st.warning("Opção já existe.")
             else:
                 st.warning("Digite um nome.")
+
+    st.markdown("---")
+    st.subheader("⚙️ Campos Obrigatórios")
+    try:
+        df_flags = db.load_field_flags()
+    except Exception:
+        df_flags = None
+
+    if df_flags is None or df_flags.empty:
+        st.info("Nenhuma configuração de campos encontrada. Execute o sistema para semear os campos.")
+    else:
+        dff = st.data_editor(
+            df_flags,
+            column_config={
+                "Obrigatorio": st.column_config.CheckboxColumn("Obrigatório?"),
+                "Campo": None,
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+        if st.button("💾 Salvar Flags de Campos"):
+            for _, r in dff.iterrows():
+                row_id = r.get("id")
+                if row_id is not None:
+                    db.save_field_flag(row_id, bool(r["Obrigatorio"]))
+            st.success("Flags de campos atualizadas!")
+            st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: USUÁRIOS

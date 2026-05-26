@@ -70,11 +70,11 @@ def _rows_to_df(rows: list[dict], columns: list[str]) -> pd.DataFrame:
 # ─── Colunas esperadas ────────────────────────────────────────────────────────
 
 COLUNAS_INCIDENTES = [
-    "id", "Data_Registro", "Data_Incidente", "Hora_Aproximada", "Turno", "Setor",
-    "Cama_Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
-    "Medicamento_Envolvido", "Gravidade", "Dano_Paciente",
-    "Paciente_Foi_Comunicado", "Familiar_Foi_Comunicado", "Medico_Foi_Comunicado",
+    "id", "Data_Registro", "Data_Incidente", "Turno", "Setor",
+    "Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
+    "Medicamento_Envolvido", "Gravidade",
     "Fatores_Causadores", "Descricao", "Acoes_Imediatas", "Sugestao_Melhoria",
+    "Data_Relato", "Hora_Relato", "Nome_Paciente", "Data_Nascimento",
     "Relator", "Funcao_Relator", "Status",
 ]
 
@@ -203,6 +203,37 @@ def load_config() -> pd.DataFrame:
         res = sb.table("config_tabelas").select("*").order("Tabela").execute()
         rows = res.data or []
     return _rows_to_df(rows, COLUNAS_CONFIG)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FLAGS DE CAMPOS (obrigatoriedade)
+# Tabela esperada: config_campos (Campo TEXT, Obrigatorio BOOLEAN)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def load_field_flags() -> pd.DataFrame:
+    sb = get_client()
+    res = sb.table("config_campos").select("*").order("Campo").execute()
+    rows = res.data or []
+    if not rows:
+        # semeia flags padrão (todos False) — ajuste conforme necessário
+        default_campos = [
+            {"Campo": c, "Obrigatorio": False} for c in [
+                "Data_Registro","Data_Incidente","Turno","Setor","Leito",
+                "Tipo_Geral","Categoria_Incidente","Subcategoria","Medicamento_Envolvido",
+                "Gravidade","Fatores_Causadores","Descricao","Acoes_Imediatas","Sugestao_Melhoria",
+                "Data_Relato","Hora_Relato","Nome_Paciente","Data_Nascimento",
+                "Relator","Funcao_Relator","Status"
+            ]
+        ]
+        sb.table("config_campos").insert(default_campos).execute()
+        res = sb.table("config_campos").select("*").order("Campo").execute()
+        rows = res.data or []
+    return _rows_to_df(rows, ["id", "Campo", "Obrigatorio"])
+
+
+def save_field_flag(row_id: int | str, obrigatorio: bool) -> None:
+    sb = get_client()
+    sb.table("config_campos").update({"Obrigatorio": obrigatorio}).eq("id", row_id).execute()
 
 
 def save_config_opcao(row_id: int | str, ativo: bool) -> None:
