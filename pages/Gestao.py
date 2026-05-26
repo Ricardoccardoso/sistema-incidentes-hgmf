@@ -127,8 +127,34 @@ COLUNAS_DADOS = [
     "Relator", "Funcao_Relator", "Status"
 ]
 
-STATUS_OPTS    = ["Novo", "Em Análise", "Concluído", "Arquivado"]
+STATUS_OPTS    = ["Investigar", "Notificar", "Em Análise", "Pendência", "Concluído"]
 PERMISSOES     = ["Acesso Total", "Apenas Relatórios", "Apenas Configurar Tabelas"]
+MENU_OPTIONS   = [
+    ("📊 Dashboard", "Dashboard"),
+    ("📋 Notificações", "Notificações"),
+    ("📈 Relatórios", "Relatórios"),
+    ("📁 Exportar Dados", "Exportar Dados"),
+    ("⚙️ Configurar Menus", "Configurar Menus"),
+    ("👥 Usuários", "Usuários"),
+]
+MENU_LABELS    = [label for _, label in MENU_OPTIONS]
+PRESET_PERMISSIONS = {
+    "Acesso Total": MENU_LABELS,
+    "Apenas Relatórios": ["Dashboard", "Notificações", "Relatórios", "Exportar Dados"],
+    "Apenas Configurar Tabelas": ["Configurar Menus", "Usuários"],
+}
+
+def parse_permissions(value):
+    if value in PRESET_PERMISSIONS:
+        return PRESET_PERMISSIONS[value]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(";") if item.strip()]
+    return []
+
+def permissions_to_string(selected):
+    if set(selected) == set(MENU_LABELS):
+        return "Acesso Total"
+    return ";".join(selected)
 
 GRAVIDADE_CORES = {
     "Near Miss": "near",
@@ -252,10 +278,14 @@ with st.sidebar:
     st.markdown("---")
 
     menu_items = []
-    if perm in ["Acesso Total", "Apenas Relatórios"]:
-        menu_items += ["📊 Dashboard", "📋 Notificações", "📈 Relatórios", "📁 Exportar Dados"]
-    if perm in ["Acesso Total", "Apenas Configurar Tabelas"]:
-        menu_items += ["⚙️ Configurar Menus", "👥 Usuários"]
+    user_perms = parse_permissions(perm)
+    for display, label in MENU_OPTIONS:
+        if label in user_perms:
+            menu_items.append(display)
+
+    if not menu_items:
+        st.warning("Seu usuário não possui menus autorizados. Contate o administrador.")
+        st.stop()
 
     menu = st.radio("Navegação", menu_items, label_visibility="collapsed")
     st.markdown("---")
@@ -403,8 +433,8 @@ if menu == "📊 Dashboard":
         st.subheader("Status das Notificações")
         df_status = df_f["Status"].value_counts().reset_index()
         df_status.columns = ["Status", "Qtd"]
-        s1, s2, s3, s4 = st.columns(4)
-        for col_k, status_n in zip([s1, s2, s3, s4], STATUS_OPTS):
+        s1, s2, s3, s4, s5 = st.columns(5)
+        for col_k, status_n in zip([s1, s2, s3, s4, s5], STATUS_OPTS):
             qtd = int(df_status[df_status["Status"] == status_n]["Qtd"].sum()) if not df_status.empty else 0
             col_k.metric(status_n, qtd)
 
@@ -452,8 +482,9 @@ elif menu == "📋 Notificações":
         cor = _cor_gravidade(str(row.get("Gravidade", "")))
         status_val = str(row.get("Status", "Novo"))
         badge_class = {
-            "Novo": "badge-novo", "Em Análise": "badge-analise",
-            "Concluído": "badge-concluido", "Arquivado": "badge-critico"
+            "Investigar": "badge-analise", "Notificar": "badge-critico",
+            "Em Análise": "badge-analise", "Pendência": "badge-critico",
+            "Concluído": "badge-concluido"
         }.get(status_val, "badge-novo")
 
         st.markdown(f"""
@@ -733,12 +764,16 @@ elif menu == "📁 Exportar Dados":
 
     st.markdown(f"**{len(df_exp)}** registros no período selecionado.")
 
-    csv_bytes = df_exp.to_csv(index=False).encode("utf-8-sig")
+    excel_buffer = io.BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+        df_exp.to_excel(writer, index=False, sheet_name="Incidentes")
+    excel_buffer.seek(0)
+
     st.download_button(
-        "⬇️ Baixar CSV (Excel compatível)",
-        data=csv_bytes,
-        file_name=f"incidentes_hgmf_{date.today()}.csv",
-        mime="text/csv",
+        "⬇️ Baixar Excel (.xlsx)",
+        data=excel_buffer,
+        file_name=f"incidentes_hgmf_{date.today()}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True
     )
 
@@ -770,17 +805,26 @@ elif menu == "⚙️ Configurar Menus":
                 "Ativo":  st.column_config.CheckboxColumn("Ativo?"),
                 "Tabela": None,
             },
-            disabled=["Opcao"],
+            disabled=["Tabela"],
             hide_index=True,
             use_container_width=True
         )
         if st.button("💾 Gravar Alterações", type="primary"):
+            invalid = False
             for _, r in df_ed.iterrows():
-                row_id = r.get("id")
-                if row_id:
-                    db.save_config_opcao(row_id, bool(r["Ativo"]))
-            st.success("✅ Configuração salva!")
-            st.rerun()
+                opcao = str(r.get("Opcao", "")).strip()
+                if not opcao:
+                    invalid = True
+                    break
+            if invalid:
+                st.warning("Cada opção de menu deve ter um nome válido.")
+            else:
+                for _, r in df_ed.iterrows():
+                    row_id = r.get("id")
+                    if row_id:
+                        db.save_config_opcao(row_id, str(r["Opcao"]).strip(), bool(r["Ativo"]))
+                st.success("✅ Configuração salva!")
+                st.rerun()
 
     with col_t2:
         st.markdown("**➕ Adicionar Opção**")
@@ -797,6 +841,17 @@ elif menu == "⚙️ Configurar Menus":
                     st.warning("Opção já existe.")
             else:
                 st.warning("Digite um nome.")
+
+        st.markdown("**🗑️ Excluir Opção**")
+        if not df_f2.empty:
+            opcao_excluir = st.selectbox("Opção para excluir", df_f2["Opcao"].tolist(), key="opcao_excluir")
+            if st.button("Excluir Opção", use_container_width=True, key="btn_excluir_opcao"):
+                row_id = df_f2[df_f2["Opcao"] == opcao_excluir]["id"].iloc[0]
+                db.delete_config_opcao(row_id)
+                st.success("Opção excluída.")
+                st.rerun()
+        else:
+            st.info("Nenhuma opção disponível para exclusão.")
 
     st.markdown("---")
     st.subheader("⚙️ Campos Obrigatórios")
@@ -844,9 +899,12 @@ elif menu == "👥 Usuários":
         row_sel = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
         col_pa, col_pb = st.columns(2)
         with col_pa:
-            nova_perm = st.selectbox("Permissão", PERMISSOES,
-                                     index=PERMISSOES.index(row_sel["Permissao"]) if row_sel["Permissao"] in PERMISSOES else 0,
-                                     key="nova_perm")
+            selected_menus = st.multiselect(
+                "Menus autorizados",
+                MENU_LABELS,
+                default=parse_permissions(row_sel["Permissao"]),
+                key="menus_sel"
+            )
         with col_pb:
             novo_ativo = st.checkbox("Usuário Ativo", value=bool(row_sel["Ativo"]), key="novo_ativo")
 
@@ -854,7 +912,7 @@ elif menu == "👥 Usuários":
         with col_pc:
             if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
                 row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
-                db.update_user(row_u["id"], {"Permissao": nova_perm, "Ativo": novo_ativo})
+                db.update_user(row_u["id"], {"Permissao": permissions_to_string(selected_menus), "Ativo": novo_ativo})
                 st.success("Usuário atualizado!")
                 st.rerun()
         with col_pd:
@@ -883,7 +941,7 @@ elif menu == "👥 Usuários":
             n_user  = st.text_input("Login (sem espaços)")
             n_senha = st.text_input("Senha", type="password")
             n_conf  = st.text_input("Confirmar Senha", type="password")
-            n_perm  = st.selectbox("Nível de Acesso", PERMISSOES)
+            n_menus = st.multiselect("Menus autorizados", MENU_LABELS, default=["Dashboard", "Notificações"])
             criar   = st.form_submit_button("✅ Criar Usuário", use_container_width=True)
 
             if criar:
@@ -897,11 +955,13 @@ elif menu == "👥 Usuários":
                     st.error("Este login já está em uso.")
                 elif len(n_senha) < 6:
                     st.error("A senha deve ter ao menos 6 caracteres.")
+                elif not n_menus:
+                    st.error("Selecione ao menos um menu para o usuário.")
                 else:
                     novo_usr = {
                         "Usuario":      n_user.strip(),
                         "Senha_Hash":   hash_senha(n_senha),
-                        "Permissao":    n_perm,
+                        "Permissao":    permissions_to_string(n_menus),
                         "Ativo":        True,
                         "Data_Criacao": date.today().strftime("%Y-%m-%d"),
                     }

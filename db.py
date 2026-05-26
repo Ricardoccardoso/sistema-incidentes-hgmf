@@ -236,10 +236,16 @@ def save_field_flag(row_id: int | str, obrigatorio: bool) -> None:
     sb.table("config_campos").update({"Obrigatorio": obrigatorio}).eq("id", row_id).execute()
 
 
-def save_config_opcao(row_id: int | str, ativo: bool) -> None:
-    """Ativa/desativa uma opção de configuração."""
+def save_config_opcao(row_id: int | str, opcao: str, ativo: bool) -> None:
+    """Atualiza o texto e/ou o status de uma opção de configuração."""
     sb = get_client()
-    sb.table("config_tabelas").update({"Ativo": ativo}).eq("id", row_id).execute()
+    sb.table("config_tabelas").update({"Opcao": opcao, "Ativo": ativo}).eq("id", row_id).execute()
+
+
+def delete_config_opcao(row_id: int | str) -> None:
+    """Remove uma opção de configuração."""
+    sb = get_client()
+    sb.table("config_tabelas").delete().eq("id", row_id).execute()
 
 
 def add_config_opcao(tabela: str, opcao: str) -> None:

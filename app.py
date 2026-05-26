@@ -96,7 +96,18 @@ load_field_flags = getattr(db, "load_field_flags", lambda: pd.DataFrame())
 def get_opcoes(df_conf, tabela):
     return db.get_opcoes(df_conf, tabela)
 
-# ─── (bloco removido — opções padrão agora vivem em db.py) ───────────────────
+GRAVIDADE_ORDEM = [
+    "Near Miss (Quase Evento - não atingiu o paciente)",
+    "Sem Dano (atingiu, sem lesão)",
+    "Dano Leve (lesão leve/temporária)",
+    "Dano Moderado (lesão moderada/temporária)",
+    "Dano Grave (lesão grave/permanente)",
+    "Óbito",
+]
+
+def ordenar_gravidade(opcoes):
+    ordem = {valor: indice for indice, valor in enumerate(GRAVIDADE_ORDEM)}
+    return sorted(opcoes, key=lambda x: ordem.get(x, len(opcoes)))
 
 # ─── Cabeçalho ────────────────────────────────────────────────────────────────
 if os.path.exists("logo.png"):
@@ -152,7 +163,7 @@ with st.form("form_notificacao", clear_on_submit=True):
         return texto + (" *" if req else "")
 
     st.markdown('<div class="secao-titulo">📝 Dados do Relato / Paciente</div>', unsafe_allow_html=True)
-    r1, r2, r3 = st.columns([2, 2, 2])
+    r1, r2, r3 = st.columns([1.5, 1.5, 4])
     with r1:
         data_relato = st.date_input(label("Data_Relato", "Data do Relato"), value=date.today())
     with r2:
@@ -160,7 +171,7 @@ with st.form("form_notificacao", clear_on_submit=True):
     with r3:
         nome_paciente = st.text_input(label("Nome_Paciente", "Nome do Paciente"), placeholder="Ex: João da Silva")
 
-    s1, s2 = st.columns([2, 1])
+    s1, s2 = st.columns([1.5, 1])
     with s1:
         data_nasc = st.date_input(label("Data_Nascimento", "Data de Nascimento do Paciente"), value=date(2000,1,1))
     with s2:
@@ -195,7 +206,7 @@ with st.form("form_notificacao", clear_on_submit=True):
 
     # ── BLOCO 3: Gravidade e Dano ─────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">⚠️ Gravidade e Dano</div>', unsafe_allow_html=True)
-    gravidade_ops = get_opcoes(df_config, "Gravidade")
+    gravidade_ops = ordenar_gravidade(get_opcoes(df_config, "Gravidade"))
     gravidade = st.select_slider("Nível de Gravidade / Classificação do Dano", options=gravidade_ops)
 
     # Observação: campo de dano e caixas de comunicação removidos conforme solicitado
@@ -203,14 +214,14 @@ with st.form("form_notificacao", clear_on_submit=True):
     # ── BLOCO 4: Fatores e Descrição ──────────────────────────────────────────
     st.markdown('<div class="secao-titulo">🔍 Fatores Causadores e Descrição</div>', unsafe_allow_html=True)
     fatores = st.multiselect(
-        "Fatores que contribuíram para o incidente (selecione todos que se aplicam)",
+        "Fatores que contribuíram para o incidente (selecione todos os itens aplicáveis)",
         get_opcoes(df_config, "Fator Causador")
     )
 
     descricao = st.text_area(
         "Descreva o que aconteceu (O quê? Como? Onde? Sequência dos fatos)",
         height=130,
-        placeholder="Relate os fatos de forma objetiva, sem identificar pacientes. Ex: Paciente em pós-op imediato foi encontrado no chão ao lado do leito às 14h30..."
+        placeholder="Relate os fatos de forma objetiva. Ex: Paciente em pós-op imediato foi encontrado no chão ao lado do leito às 14h30..."
     )
 
     acoes_imediatas = st.text_area(
