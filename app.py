@@ -110,18 +110,25 @@ def ordenar_gravidade(opcoes):
     return sorted(opcoes, key=lambda x: ordem.get(x, len(opcoes)))
 
 # ─── Cabeçalho ────────────────────────────────────────────────────────────────
-if os.path.exists("logo.png"):
-        st.image("logo.png", width=140)
-        st.markdown('<div style="text-align:center; margin-bottom:8px;">'
-                                '<h1 style="margin:6px 0 0; font-size:1.25rem">Hospital Geral Menandro de Faria</h1>'
-                                '<p style="margin:0; color:#546e7a">Núcleo de Segurança do Paciente — Notificação de Incidente</p></div>', unsafe_allow_html=True)
+# Procura `logo.png` primeiro no diretório do script (repositório),
+# depois no diretório de trabalho atual. Isso evita problemas quando o
+# app é executado por deploys que alteram o cwd.
+logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+if not os.path.exists(logo_path):
+    logo_path = "logo.png"
+
+if os.path.exists(logo_path):
+    st.image(logo_path, width=140)
+    st.markdown('<div style="text-align:center; margin-bottom:8px;">'
+                            '<h1 style="margin:6px 0 0; font-size:1.25rem">Hospital Geral Menandro de Faria</h1>'
+                            '<p style="margin:0; color:#546e7a">Núcleo de Segurança do Paciente — Notificação de Incidente</p></div>', unsafe_allow_html=True)
 else:
-        st.markdown("""
-        <div class="cabecalho">
-            <h1>🏥 Hospital Geral Menandro de Faria</h1>
-            <p>Núcleo de Segurança do Paciente — Notificação de Incidente</p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <div class="cabecalho">
+        <h1>🏥 Hospital Geral Menandro de Faria</h1>
+        <p>Núcleo de Segurança do Paciente — Notificação de Incidente</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown(f"""
 <div class="aviso-sigilo">
