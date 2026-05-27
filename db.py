@@ -198,16 +198,23 @@ def load_config_table(tabela: str) -> pd.DataFrame:
         return pd.DataFrame(columns=COLUNAS_CONFIG)
 
     sb = get_client()
-    res = sb.table(table_name).select("*").order("Opcao").execute()
-    rows = res.data or []
+    try:
+        res = sb.table(table_name).select("*").order("Opcao").execute()
+        rows = res.data or []
+    except Exception:
+        rows = []
+
     if not rows:
         defaults = DEFAULT_CONFIG_OPCOES.get(tabela, [])
         if defaults:
-            sb.table(table_name).insert(
-                [{"Opcao": opcao, "Ativo": True} for opcao in defaults]
-            ).execute()
-            res = sb.table(table_name).select("*").order("Opcao").execute()
-            rows = res.data or []
+            try:
+                sb.table(table_name).insert(
+                    [{"Opcao": opcao, "Ativo": True} for opcao in defaults]
+                ).execute()
+                res = sb.table(table_name).select("*").order("Opcao").execute()
+                rows = res.data or []
+            except Exception:
+                rows = [{"id": None, "Opcao": opcao, "Ativo": True} for opcao in defaults]
 
     df = _rows_to_df(rows, ["id", "Opcao", "Ativo"])
     df["Tabela"] = tabela
