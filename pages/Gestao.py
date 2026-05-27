@@ -288,6 +288,13 @@ df_dados    = load_data()
 df_config   = load_config()
 df_usuarios = load_users()
 
+_banner = st.session_state.pop("_notif_banner", None)
+if _banner:
+    if _banner["type"] == "success":
+        st.success(_banner["msg"])
+    else:
+        st.error(_banner["msg"])
+
 perm = st.session_state["permissao"]
 
 # Sidebar
@@ -620,8 +627,11 @@ elif menu == "📋 Notificações":
                                 'Acoes_Imediatas': new_acoes,
                                 'Sugestao_Melhoria': new_sug
                             }
-                            db.update_incidente(row.get('id'), campos)
-                            st.success('Alterações salvas!')
+                            try:
+                                db.update_incidente(row.get('id'), campos)
+                                st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Salvo com sucesso!"}
+                            except Exception as e:
+                                st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {e}"}
                             st.rerun()
 
             # Gerenciamento de status
@@ -637,8 +647,11 @@ elif menu == "📋 Notificações":
                 with col_s2:
                     if st.button("💾 Salvar Status", key=f"btn_status_{idx}"):
                         row_id = row.get("id")
-                        db.update_incidente(row_id, {"Status": novo_status})
-                        st.success("Status atualizado!")
+                        try:
+                            db.update_incidente(row_id, {"Status": novo_status})
+                            st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Status atualizado com sucesso!"}
+                        except Exception as e:
+                            st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar status: {e}"}
                         st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -846,17 +859,21 @@ elif menu == "⚙️ Configurar Menus":
             if not invalid.empty:
                 st.warning("Cada opção de menu deve ter um nome válido ou ser marcada para exclusão.")
             else:
+                erros = []
                 for _, row in edited[edited["Excluir"] == True].iterrows():
                     try:
                         db.delete_config_opcao(row["id"], row["Tabela"])
-                    except Exception:
-                        st.warning(f"Falha ao excluir id={row['id']}")
+                    except Exception as e:
+                        erros.append(str(e))
                 for _, row in edited[edited["Excluir"] != True].iterrows():
                     try:
                         db.save_config_opcao(row["id"], row["Tabela"], str(row["Opcao"]).strip(), bool(row["Ativo"]))
-                    except Exception:
-                        st.warning(f"Falha ao salvar id={row['id']}")
-                st.success("✅ Configuração salva!")
+                    except Exception as e:
+                        erros.append(str(e))
+                if erros:
+                    st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {'; '.join(erros)}"}
+                else:
+                    st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Salvo com sucesso!"}
                 st.rerun()
 
     with col_t2:
@@ -867,8 +884,11 @@ elif menu == "⚙️ Configurar Menus":
                 existe = ((df_config["Tabela"] == tab_sel) &
                           (df_config["Opcao"].str.lower() == n_op.strip().lower())).any()
                 if not existe:
-                    db.add_config_opcao(tab_sel, n_op.strip())
-                    st.success("Adicionado!")
+                    try:
+                        db.add_config_opcao(tab_sel, n_op.strip())
+                        st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Opção adicionada com sucesso!"}
+                    except Exception as e:
+                        st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao adicionar: {e}"}
                     st.rerun()
                 else:
                     st.warning("Opção já existe.")
@@ -901,12 +921,19 @@ elif menu == "⚙️ Configurar Menus":
             hide_index=True,
             use_container_width=True
         )
-        if st.button("💾 Salvar Flags de Campos"):
+        if st.button("💾 Salvar Campos Obrigatórios"):
+            erros = []
             for _, r in dff.iterrows():
                 row_id = r.get("id")
                 if row_id is not None:
-                    db.save_field_flag(row_id, bool(r["Obrigatorio"]))
-            st.success("Flags de campos atualizadas!")
+                    try:
+                        db.save_field_flag(row_id, bool(r["Obrigatorio"]))
+                    except Exception as e:
+                        erros.append(str(e))
+            if erros:
+                st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {'; '.join(erros)}"}
+            else:
+                st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Salvo com sucesso!"}
             st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -941,15 +968,21 @@ elif menu == "👥 Usuários":
         with col_pc:
             if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
                 row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
-                db.update_user(row_u["id"], {"Permissao": permissions_to_string(selected_menus), "Ativo": novo_ativo})
-                st.success("Usuário atualizado!")
+                try:
+                    db.update_user(row_u["id"], {"Permissao": permissions_to_string(selected_menus), "Ativo": novo_ativo})
+                    st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Usuário atualizado com sucesso!"}
+                except Exception as e:
+                    st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {e}"}
                 st.rerun()
         with col_pd:
             if usuario_sel != st.session_state["user"] and usuario_sel != "admin":
                 if st.button("🗑️ Remover Usuário", use_container_width=True):
                     row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
-                    db.delete_user(row_u["id"])
-                    st.success("Usuário removido.")
+                    try:
+                        db.delete_user(row_u["id"])
+                        st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Usuário removido com sucesso!"}
+                    except Exception as e:
+                        st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao remover usuário: {e}"}
                     st.rerun()
 
         st.markdown("---")
@@ -959,8 +992,12 @@ elif menu == "👥 Usuários":
         if st.button("Redefinir Senha", use_container_width=True):
             if nova_senha_admin.strip():
                 row_t = df_usuarios[df_usuarios["Usuario"] == usr_troca].iloc[0]
-                db.update_user(row_t["id"], {"Senha_Hash": hash_senha(nova_senha_admin)})
-                st.success(f"Senha de '{usr_troca}' redefinida com sucesso!")
+                try:
+                    db.update_user(row_t["id"], {"Senha_Hash": hash_senha(nova_senha_admin)})
+                    st.session_state["_notif_banner"] = {"type": "success", "msg": f"✅ Senha de '{usr_troca}' redefinida com sucesso!"}
+                except Exception as e:
+                    st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao redefinir senha: {e}"}
+                st.rerun()
             else:
                 st.warning("Digite a nova senha.")
 
@@ -994,8 +1031,11 @@ elif menu == "👥 Usuários":
                         "Ativo":        True,
                         "Data_Criacao": date.today().strftime("%Y-%m-%d"),
                     }
-                    db.save_user(novo_usr)
-                    st.success(f"Usuário '{n_user.strip()}' criado com sucesso!")
+                    try:
+                        db.save_user(novo_usr)
+                        st.session_state["_notif_banner"] = {"type": "success", "msg": f"✅ Usuário '{n_user.strip()}' criado com sucesso!"}
+                    except Exception as e:
+                        st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao criar usuário: {e}"}
                     st.rerun()
 
         st.markdown("---")

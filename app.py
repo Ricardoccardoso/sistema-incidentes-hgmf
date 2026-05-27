@@ -185,7 +185,12 @@ with st.form("form_notificacao", clear_on_submit=True):
     with c2:
         turno = st.selectbox(label("Turno", "Hora/Turno do Incidente"), get_opcoes(df_config, "Turno"))
     with c3:
-        pass
+        st.date_input(
+            label("Data_Registro", "Data do Registro"),
+            value=date.today(),
+            format="DD/MM/YYYY",
+            disabled=True
+        )
 
     c4, c5 = st.columns([3, 1])
     with c4:
@@ -210,7 +215,7 @@ with st.form("form_notificacao", clear_on_submit=True):
     with s1:
         data_nasc = st.date_input(
             label("Data_Nascimento", "Data de Nascimento do Paciente"),
-            value=date(2000, 1, 1),
+            value=None,
             min_value=date(1900, 1, 1),
             max_value=date.today(),
             format="DD/MM/YYYY"
