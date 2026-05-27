@@ -803,18 +803,17 @@ elif menu == "⚙️ Configurar Menus":
 
     with col_t1:
         st.markdown(f"**Opções do menu: {tab_sel}**")
-        # Apresenta os registros usando o `id` como índice para que ele
-        # não apareça na edição, mas continue disponível para gravação/exclusão
-        df_ed = df_f2.set_index("id").copy()
+        df_ed = df_f2.copy()
         df_ed["Excluir"] = False
         edited = st.data_editor(
             df_ed,
             column_config={
+                "id":      None,
                 "Ativo":   st.column_config.CheckboxColumn("Ativo?"),
                 "Excluir": st.column_config.CheckboxColumn("✖"),
                 "Tabela":  None,
             },
-            disabled=["Tabela"],
+            disabled=["id", "Tabela"],
             hide_index=True,
             use_container_width=True
         )
@@ -823,18 +822,16 @@ elif menu == "⚙️ Configurar Menus":
             if not invalid.empty:
                 st.warning("Cada opção de menu deve ter um nome válido ou ser marcada para exclusão.")
             else:
-                # Exclusões em lote: `edited` mantém o índice igual ao `id`
-                for idx, row in edited[edited["Excluir"] == True].iterrows():
+                for _, row in edited[edited["Excluir"] == True].iterrows():
                     try:
-                        db.delete_config_opcao(idx, row["Tabela"])
+                        db.delete_config_opcao(row["id"], row["Tabela"])
                     except Exception:
-                        st.warning(f"Falha ao excluir id={idx}")
-                # Atualizações: percorre linhas não marcadas para exclusão
-                for idx, row in edited[edited["Excluir"] != True].iterrows():
+                        st.warning(f"Falha ao excluir id={row['id']}")
+                for _, row in edited[edited["Excluir"] != True].iterrows():
                     try:
-                        db.save_config_opcao(idx, row["Tabela"], str(row["Opcao"]).strip(), bool(row["Ativo"]))
+                        db.save_config_opcao(row["id"], row["Tabela"], str(row["Opcao"]).strip(), bool(row["Ativo"]))
                     except Exception:
-                        st.warning(f"Falha ao salvar id={idx}")
+                        st.warning(f"Falha ao salvar id={row['id']}")
                 st.success("✅ Configuração salva!")
                 st.rerun()
 
