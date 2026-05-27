@@ -158,6 +158,18 @@ st.markdown(f"""
 df_config = load_config()
 df_dados  = load_data()
 
+try:
+    fflags = load_field_flags()
+except Exception:
+    fflags = pd.DataFrame()
+
+def label(campo, texto):
+    try:
+        req = bool(fflags[fflags["Campo"] == campo]["Obrigatorio"].iloc[0])
+    except Exception:
+        req = False
+    return texto + (" *" if req else "")
+
 with st.form("form_notificacao", clear_on_submit=True):
 
     # ── BLOCO 1: Dados do Evento ──────────────────────────────────────────────
@@ -165,33 +177,21 @@ with st.form("form_notificacao", clear_on_submit=True):
     c1, c2, c3 = st.columns([2, 2, 2])
     with c1:
         data_incidente = st.date_input(
-            "Data do Incidente",
+            label("Data_Incidente", "Data do Incidente"),
             value=date.today(),
             max_value=date.today(),
             format="DD/MM/YYYY"
         )
     with c2:
-        turno = st.selectbox("Hora/Turno do Incidente", get_opcoes(df_config, "Turno"))
+        turno = st.selectbox(label("Turno", "Hora/Turno do Incidente"), get_opcoes(df_config, "Turno"))
     with c3:
         pass
 
     c4, c5 = st.columns([3, 1])
     with c4:
-        setor = st.selectbox("Setor / Unidade de Ocorrência", get_opcoes(df_config, "Setor"))
+        setor = st.selectbox(label("Setor", "Setor / Unidade de Ocorrência"), get_opcoes(df_config, "Setor"))
     with c5:
-        cama = st.text_input("Leito", placeholder="Ex: 12A")
-
-    # Novos campos: data/hora do relato e dados do paciente
-    try:
-        fflags = load_field_flags()
-    except Exception:
-        fflags = pd.DataFrame()
-    def label(campo, texto):
-        try:
-            req = bool(fflags[fflags["Campo"] == campo]["Obrigatorio"].iloc[0])
-        except Exception:
-            req = False
-        return texto + (" *" if req else "")
+        cama = st.text_input(label("Leito", "Leito"), placeholder="Ex: 12A")
 
     st.markdown('<div class="secao-titulo">📝 Dados do Relato / Paciente</div>', unsafe_allow_html=True)
     r1, r2, r3 = st.columns([1.5, 1.5, 4])
@@ -221,12 +221,12 @@ with st.form("form_notificacao", clear_on_submit=True):
     # ── BLOCO 2: Tipo do Incidente ────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">📋 Tipo do Incidente</div>', unsafe_allow_html=True)
     tipo_geral = st.radio(
-        "Natureza do incidente",
+        label("Tipo_Geral", "Natureza do incidente"),
         get_opcoes(df_config, "Tipo Geral"),
         horizontal=True
     )
 
-    categoria = st.selectbox("Categoria do Incidente", get_opcoes(df_config, "Categoria"))
+    categoria = st.selectbox(label("Categoria_Incidente", "Categoria do Incidente"), get_opcoes(df_config, "Categoria"))
 
     # Subcategorias dinâmicas conforme categoria
     subcategoria = ""
@@ -246,7 +246,7 @@ with st.form("form_notificacao", clear_on_submit=True):
         medicamento  = st.text_input("Medicamento(s) envolvido(s)", placeholder="Ex: Heparina 5000 UI")
 
     descricao = st.text_area(
-        "Descreva o que aconteceu (O quê? Como? Onde? Sequência dos fatos)",
+        label("Descricao", "Descreva o que aconteceu (O quê? Como? Onde? Sequência dos fatos)"),
         height=130,
         placeholder="Relate os fatos de forma objetiva. Ex: Paciente em pós-op imediato foi encontrado no chão ao lado do leito às 14h30..."
     )
@@ -254,19 +254,19 @@ with st.form("form_notificacao", clear_on_submit=True):
     # ── BLOCO 3: Gravidade e Dano ─────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">⚠️ Gravidade e Dano</div>', unsafe_allow_html=True)
     gravidade_ops = ordenar_gravidade(get_opcoes(df_config, "Gravidade"))
-    gravidade = st.select_slider("Nível de Gravidade / Classificação do Dano", options=gravidade_ops)
+    gravidade = st.select_slider(label("Gravidade", "Nível de Gravidade / Classificação do Dano"), options=gravidade_ops)
 
     # Observação: campo de dano e caixas de comunicação removidos conforme solicitado
 
     # ── BLOCO 4: Fatores e Descrição ──────────────────────────────────────────
     st.markdown('<div class="secao-titulo">🔍 Fatores Causadores</div>', unsafe_allow_html=True)
     fatores = st.multiselect(
-        "Fatores que contribuíram para o incidente (selecione todos os itens aplicáveis)",
+        label("Fatores_Causadores", "Fatores que contribuíram para o incidente (selecione todos os itens aplicáveis)"),
         get_opcoes(df_config, "Fator Causador")
     )
 
     acoes_imediatas = st.text_area(
-        "Ações imediatas realizadas (o que foi feito logo após o incidente?)",
+        label("Acoes_Imediatas", "Ações imediatas realizadas (o que foi feito logo após o incidente?)"),
         height=80,
         placeholder="Ex: Comunicado ao médico, feita gestão da lesão…"
     )
@@ -276,32 +276,37 @@ with st.form("form_notificacao", clear_on_submit=True):
     st.caption("Sua identidade nunca será vinculada ao relato de forma pública. É opcional e serve apenas para contato em caso de dúvida pelo Núcleo.")
     c9, c10 = st.columns(2)
     with c9:
-        relator = st.text_input("Seu Nome", placeholder="Opcional")
+        relator = st.text_input(label("Relator", "Seu Nome"), placeholder="Opcional")
     with c10:
-        funcao  = st.text_input("Sua Função / Cargo", placeholder="Ex: Técnico de Enfermagem")
+        funcao  = st.text_input(label("Funcao_Relator", "Sua Função / Cargo"), placeholder="Ex: Técnico de Enfermagem")
 
     st.markdown("---")
     enviar = st.form_submit_button("📤 Enviar Notificação ao Núcleo de Segurança", use_container_width=True)
 
     if enviar:
-        # validação de obrigatoriedade baseada nas flags de campos
         missing = []
         try:
             reqs = {row['Campo']: bool(row['Obrigatorio']) for _, row in fflags.iterrows()}
         except Exception:
             reqs = {}
-        if reqs.get('Nome_Paciente', False) and not nome_paciente.strip():
-            missing.append('Nome do Paciente')
-        if reqs.get('Data_Relato', False) and not data_relato:
-            missing.append('Data do Relato')
-        if reqs.get('Hora_Relato', False) and not hora_relato:
-            missing.append('Hora do Relato')
-        if reqs.get('Data_Nascimento', False) and not data_nasc:
-            missing.append('Data de Nascimento')
+        for campo, label_txt, vazio in [
+            ('Leito',              'Leito',              lambda: not cama.strip()),
+            ('Nome_Paciente',      'Nome do Paciente',   lambda: not nome_paciente.strip()),
+            ('Data_Relato',        'Data do Relato',     lambda: not data_relato),
+            ('Hora_Relato',        'Hora do Relato',     lambda: not hora_relato),
+            ('Data_Nascimento',    'Data de Nascimento', lambda: not data_nasc),
+            ('Descricao',          'Descrição',          lambda: not descricao.strip()),
+            ('Fatores_Causadores', 'Fatores Causadores', lambda: not fatores),
+            ('Acoes_Imediatas',    'Ações Imediatas',    lambda: not acoes_imediatas.strip()),
+            ('Relator',            'Relator',            lambda: not relator.strip()),
+            ('Funcao_Relator',     'Função / Cargo',     lambda: not funcao.strip()),
+        ]:
+            if reqs.get(campo, False) and vazio():
+                missing.append(label_txt)
 
         if missing:
             st.warning(f"⚠️ Preencha os campos obrigatórios: {', '.join(missing)}")
-        elif not descricao.strip():
+        elif not reqs.get('Descricao', False) and not descricao.strip():
             st.warning("⚠️ Por favor, descreva o incidente antes de enviar.")
         else:
             novo = {

@@ -156,6 +156,30 @@ def permissions_to_string(selected):
         return "Acesso Total"
     return ";".join(selected)
 
+CAMPO_LABELS = {
+    "Acoes_Imediatas":      "Ações Imediatas",
+    "Categoria_Incidente":  "Categoria do Incidente",
+    "Data_Incidente":       "Data do Incidente",
+    "Data_Nascimento":      "Data de Nascimento",
+    "Data_Registro":        "Data do Registro",
+    "Data_Relato":          "Data do Relato",
+    "Descricao":            "Descrição do Incidente",
+    "Fatores_Causadores":   "Fatores Causadores",
+    "Funcao_Relator":       "Função / Cargo do Relator",
+    "Gravidade":            "Gravidade",
+    "Hora_Relato":          "Hora do Relato",
+    "Leito":                "Leito",
+    "Medicamento_Envolvido":"Medicamento Envolvido",
+    "Nome_Paciente":        "Nome do Paciente",
+    "Relator":              "Nome do Relator",
+    "Setor":                "Setor / Unidade",
+    "Status":               "Status",
+    "Subcategoria":         "Subcategoria",
+    "Sugestao_Melhoria":    "Sugestão de Melhoria",
+    "Tipo_Geral":           "Tipo Geral",
+    "Turno":                "Hora/Turno",
+}
+
 GRAVIDADE_CORES = {
     "Near Miss": "near",
     "Sem Dano":  "semDano",
@@ -861,13 +885,18 @@ elif menu == "⚙️ Configurar Menus":
         df_flags = None
 
     if df_flags is None or df_flags.empty:
-        st.info("Nenhuma configuração de campos encontrada. Execute o sistema para semear os campos.")
+        st.info("Nenhuma configuração de campos encontrada. Verifique a tabela config_campos no Supabase.")
     else:
+        df_display = df_flags.copy()
+        df_display.insert(1, "Nome do Campo",
+                          df_display["Campo"].map(CAMPO_LABELS).fillna(df_display["Campo"]))
         dff = st.data_editor(
-            df_flags,
+            df_display,
             column_config={
-                "Obrigatorio": st.column_config.CheckboxColumn("Obrigatório?"),
-                "Campo": None,
+                "id":            None,
+                "Campo":         None,
+                "Nome do Campo": st.column_config.TextColumn("Campo", disabled=True),
+                "Obrigatorio":   st.column_config.CheckboxColumn("Obrigatório?"),
             },
             hide_index=True,
             use_container_width=True

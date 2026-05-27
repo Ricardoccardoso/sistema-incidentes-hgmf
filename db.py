@@ -290,24 +290,28 @@ def delete_incidente(row_id: int | str) -> None:
 # Tabela esperada: config_campos (Campo TEXT, Obrigatorio BOOLEAN)
 # ══════════════════════════════════════════════════════════════════════════════
 
+_DEFAULT_CAMPOS = [
+    "Acoes_Imediatas","Categoria_Incidente","Data_Incidente","Data_Nascimento",
+    "Data_Registro","Data_Relato","Descricao","Fatores_Causadores","Funcao_Relator",
+    "Gravidade","Hora_Relato","Leito","Medicamento_Envolvido","Nome_Paciente",
+    "Relator","Setor","Status","Subcategoria","Sugestao_Melhoria","Tipo_Geral","Turno",
+]
+
 def load_field_flags() -> pd.DataFrame:
     sb = get_client()
-    res = sb.table("config_campos").select("*").order("Campo").execute()
-    rows = res.data or []
-    if not rows:
-        # semeia flags padrão (todos False) — ajuste conforme necessário
-        default_campos = [
-            {"Campo": c, "Obrigatorio": False} for c in [
-                "Data_Registro","Data_Incidente","Turno","Setor","Leito",
-                "Tipo_Geral","Categoria_Incidente","Subcategoria","Medicamento_Envolvido",
-                "Gravidade","Fatores_Causadores","Descricao","Acoes_Imediatas","Sugestao_Melhoria",
-                "Data_Relato","Hora_Relato","Nome_Paciente","Data_Nascimento",
-                "Relator","Funcao_Relator","Status"
-            ]
-        ]
-        sb.table("config_campos").insert(default_campos).execute()
+    try:
         res = sb.table("config_campos").select("*").order("Campo").execute()
         rows = res.data or []
+    except Exception:
+        rows = []
+    if not rows:
+        default_campos = [{"Campo": c, "Obrigatorio": False} for c in _DEFAULT_CAMPOS]
+        try:
+            sb.table("config_campos").insert(default_campos).execute()
+            res = sb.table("config_campos").select("*").order("Campo").execute()
+            rows = res.data or []
+        except Exception:
+            rows = [{"id": None, "Campo": c, "Obrigatorio": False} for c in _DEFAULT_CAMPOS]
     df = _rows_to_df(rows, ["id", "Campo", "Obrigatorio"])
     if "Obrigatorio" in df.columns:
         df["Obrigatorio"] = df["Obrigatorio"].apply(_to_bool)
