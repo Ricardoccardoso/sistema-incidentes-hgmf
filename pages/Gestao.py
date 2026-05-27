@@ -580,7 +580,7 @@ elif menu == "📋 Notificações":
                                 cur_nasc = date(2000, 1, 1)
                         except Exception:
                             cur_nasc = date(2000,1,1)
-                        new_nasc = st.date_input('Data de Nascimento', value=cur_nasc, format="DD/MM/YYYY")
+                        new_nasc = st.date_input('Data de Nascimento', value=cur_nasc, min_value=date(1900, 1, 1), format="DD/MM/YYYY")
                         new_descricao = st.text_area('Descrição completa', value=row.get('Descricao',''))
                         new_acoes = st.text_area('Ações Imediatas', value=row.get('Acoes_Imediatas',''))
                         new_sug = st.text_area('Sugestão de melhoria', value=row.get('Sugestao_Melhoria',''))
@@ -826,13 +826,13 @@ elif menu == "⚙️ Configurar Menus":
                 # Exclusões em lote: `edited` mantém o índice igual ao `id`
                 for idx, row in edited[edited["Excluir"] == True].iterrows():
                     try:
-                        db.delete_config_opcao(idx)
+                        db.delete_config_opcao(idx, row["Tabela"])
                     except Exception:
                         st.warning(f"Falha ao excluir id={idx}")
                 # Atualizações: percorre linhas não marcadas para exclusão
                 for idx, row in edited[edited["Excluir"] != True].iterrows():
                     try:
-                        db.save_config_opcao(idx, str(row["Opcao"]).strip(), bool(row["Ativo"]))
+                        db.save_config_opcao(idx, row["Tabela"], str(row["Opcao"]).strip(), bool(row["Ativo"]))
                     except Exception:
                         st.warning(f"Falha ao salvar id={idx}")
                 st.success("✅ Configuração salva!")

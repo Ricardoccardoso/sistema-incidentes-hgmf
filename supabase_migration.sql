@@ -7,6 +7,141 @@ CREATE TABLE IF NOT EXISTS config_campos (
     "Obrigatorio" BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+-- 1b) Criar tabelas de configuração por menu para manter IDs isolados por área
+CREATE TABLE IF NOT EXISTS config_turno (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_tipo_geral (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_setor (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_categoria (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_subcategoria_lpp (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_subcategoria_queda (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_subcategoria_med (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_gravidade (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS config_fator_causador (
+    id BIGSERIAL PRIMARY KEY,
+    "Opcao" TEXT UNIQUE NOT NULL,
+    "Ativo" BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- 1c) Migrar dados do modelo antigo `config_tabelas`, se existir
+CREATE TABLE IF NOT EXISTS config_tabelas (
+    id BIGSERIAL PRIMARY KEY,
+    "Tabela" TEXT,
+    "Opcao" TEXT,
+    "Ativo" BOOLEAN
+);
+
+INSERT INTO config_turno ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Turno'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_tipo_geral ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Tipo Geral'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_setor ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Setor'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_categoria ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Categoria'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_subcategoria_lpp ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Subcategoria_LPP'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_subcategoria_queda ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Subcategoria_Queda'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_subcategoria_med ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Subcategoria_Med'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_gravidade ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Gravidade'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+INSERT INTO config_fator_causador ("Opcao", "Ativo")
+SELECT "Opcao", "Ativo"
+FROM config_tabelas
+WHERE "Tabela" = 'Fator Causador'
+ON CONFLICT ("Opcao") DO NOTHING;
+
+-- 1d) Criar tabela básica de incidentes se ainda não existir
+CREATE TABLE IF NOT EXISTS incidentes (
+    id BIGSERIAL PRIMARY KEY,
+    "Data_Registro" TIMESTAMP,
+    "Data_Incidente" DATE,
+    "Turno" TEXT,
+    "Setor" TEXT,
+    "Leito" TEXT,
+    "Tipo_Geral" TEXT,
+    "Categoria_Incidente" TEXT,
+    "Subcategoria" TEXT,
+    "Medicamento_Envolvido" TEXT,
+    "Gravidade" TEXT,
+    "Fatores_Causadores" TEXT,
+    "Descricao" TEXT,
+    "Acoes_Imediatas" TEXT,
+    "Sugestao_Melhoria" TEXT,
+    "Data_Relato" DATE,
+    "Hora_Relato" TEXT,
+    "Nome_Paciente" TEXT,
+    "Data_Nascimento" DATE,
+    "Relator" TEXT,
+    "Funcao_Relator" TEXT,
+    "Status" TEXT
+);
+
 -- 2) Criar os novos campos na tabela incidentes
 ALTER TABLE incidentes ADD COLUMN IF NOT EXISTS "Leito" TEXT;
 ALTER TABLE incidentes ADD COLUMN IF NOT EXISTS "Data_Relato" DATE;
@@ -24,7 +159,7 @@ BEGIN
     ) THEN
         EXECUTE 'ALTER TABLE incidentes RENAME COLUMN "Cama_Leito" TO "Leito"';
     END IF;
-END$$;
+END$$ LANGUAGE plpgsql;
 
 -- 4) Remover colunas legadas que não são mais usadas pelo formulário
 ALTER TABLE incidentes DROP COLUMN IF EXISTS "Hora_Aproximada";

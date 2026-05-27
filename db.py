@@ -82,6 +82,171 @@ COLUNAS_CONFIG = ["id", "Tabela", "Opcao", "Ativo"]
 
 COLUNAS_USUARIOS = ["id", "Usuario", "Senha_Hash", "Permissao", "Ativo", "Data_Criacao"]
 
+CONFIG_TABLES = {
+    "Turno":           "config_turno",
+    "Tipo Geral":      "config_tipo_geral",
+    "Setor":           "config_setor",
+    "Categoria":       "config_categoria",
+    "Subcategoria_LPP": "config_subcategoria_lpp",
+    "Subcategoria_Queda": "config_subcategoria_queda",
+    "Subcategoria_Med": "config_subcategoria_med",
+    "Gravidade":       "config_gravidade",
+    "Fator Causador":  "config_fator_causador",
+}
+
+DEFAULT_CONFIG_OPCOES = {
+    "Turno": [
+        "Manhã (07h–13h)",
+        "Tarde (13h–19h)",
+        "Noite (19h–07h)",
+    ],
+    "Tipo Geral": [
+        "Assistencial",
+        "Administrativa",
+        "Infraestrutura",
+    ],
+    "Setor": [
+        "Emergência (REA)",
+        "UTI Adulto",
+        "UTI Neonatal",
+        "Enfermaria Clínica",
+        "Enfermaria Cirúrgica",
+        "Centro Cirúrgico",
+        "CME",
+        "Farmácia",
+        "Laboratório",
+        "Radiologia/Imagem",
+        "Ambulatório",
+        "Recepção/Admissão",
+        "Outro",
+    ],
+    "Categoria": [
+        "Lesão por Pressão (LPP)",
+        "Queda do Paciente",
+        "Falha na Segurança Medicamentosa",
+        "Falha de Identificação do Paciente",
+        "Infecção Relacionada à Assistência",
+        "Falha em Procedimento/Cirurgia",
+        "Falha em Equipamento/Dispositivo",
+        "Reação Transfusional",
+        "Evento de Comunicação/Informação",
+        "Violência / Agressão",
+        "Extubação não Planejada",
+        "Saída não Autorizada do Paciente",
+        "Outro Incidente Assistencial",
+    ],
+    "Subcategoria_LPP": [
+        "Estágio I",
+        "Estágio II",
+        "Estágio III",
+        "Estágio IV",
+        "Não Classificável",
+        "Tecido Mucoso",
+    ],
+    "Subcategoria_Queda": [
+        "Queda da própria altura",
+        "Queda do leito",
+        "Queda durante transferência",
+        "Queda no banheiro",
+    ],
+    "Subcategoria_Med": [
+        "Dose incorreta",
+        "Medicamento errado",
+        "Via errada",
+        "Horário errado",
+        "Omissão de dose",
+        "Paciente errado",
+    ],
+    "Gravidade": [
+        "Near Miss (Quase Evento - não atingiu o paciente)",
+        "Sem Dano (atingiu, sem lesão)",
+        "Dano Leve (lesão leve/temporária)",
+        "Dano Moderado (lesão moderada/temporária)",
+        "Dano Grave (lesão grave/permanente)",
+        "Óbito",
+    ],
+    "Fator Causador": [
+        "Comunicação inadequada",
+        "Falha de processo/protocolo",
+        "Sobrecarga de trabalho",
+        "Equipamento inadequado/ausente",
+        "Falta de treinamento",
+        "Ambiente/infraestrutura",
+        "Fator humano/distração",
+        "Paciente não colaborativo",
+        "Outro",
+    ],
+}
+
+
+def _to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("1", "true", "t", "yes", "y", "sim", "s")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIGURAÇÕES (menus/opções)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def load_config_table(tabela: str) -> pd.DataFrame:
+    table_name = CONFIG_TABLES.get(tabela)
+    if not table_name:
+        return pd.DataFrame(columns=COLUNAS_CONFIG)
+
+    sb = get_client()
+    res = sb.table(table_name).select("*").order("Opcao").execute()
+    rows = res.data or []
+    if not rows:
+        defaults = DEFAULT_CONFIG_OPCOES.get(tabela, [])
+        if defaults:
+            sb.table(table_name).insert(
+                [{"Opcao": opcao, "Ativo": True} for opcao in defaults]
+            ).execute()
+            res = sb.table(table_name).select("*").order("Opcao").execute()
+            rows = res.data or []
+
+    df = _rows_to_df(rows, ["id", "Opcao", "Ativo"])
+    df["Tabela"] = tabela
+    return df[["id", "Tabela", "Opcao", "Ativo"]]
+
+
+def load_config() -> pd.DataFrame:
+    tables = []
+    for tabela in CONFIG_TABLES:
+        tables.append(load_config_table(tabela))
+    if not tables:
+        return pd.DataFrame(columns=COLUNAS_CONFIG)
+    df = pd.concat(tables, ignore_index=True)
+    return df.sort_values(["Tabela", "Opcao"]).reset_index(drop=True)
+
+
+def save_config_opcao(row_id: int | str, tabela: str, opcao: str, ativo: bool) -> None:
+    table_name = CONFIG_TABLES.get(tabela)
+    if not table_name:
+        raise ValueError(f"Tabela de configuração desconhecida: {tabela}")
+    sb = get_client()
+    sb.table(table_name).update({"Opcao": opcao, "Ativo": ativo}).eq("id", row_id).execute()
+
+
+def delete_config_opcao(row_id: int | str, tabela: str) -> None:
+    table_name = CONFIG_TABLES.get(tabela)
+    if not table_name:
+        raise ValueError(f"Tabela de configuração desconhecida: {tabela}")
+    sb = get_client()
+    sb.table(table_name).delete().eq("id", row_id).execute()
+
+
+def add_config_opcao(tabela: str, opcao: str) -> None:
+    table_name = CONFIG_TABLES.get(tabela)
+    if not table_name:
+        raise ValueError(f"Tabela de configuração desconhecida: {tabela}")
+    sb = get_client()
+    sb.table(table_name).insert({"Opcao": opcao, "Ativo": True}).execute()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # INCIDENTES
@@ -111,98 +276,6 @@ def update_incidente(row_id: int | str, campos: dict) -> None:
 def delete_incidente(row_id: int | str) -> None:
     sb = get_client()
     sb.table("incidentes").delete().eq("id", row_id).execute()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# CONFIGURAÇÕES (menus/opções)
-# ══════════════════════════════════════════════════════════════════════════════
-
-_OPCOES_PADRAO = [
-    # Turno
-    {"Tabela": "Turno", "Opcao": "Manhã (07h–13h)",   "Ativo": True},
-    {"Tabela": "Turno", "Opcao": "Tarde (13h–19h)",   "Ativo": True},
-    {"Tabela": "Turno", "Opcao": "Noite (19h–07h)",   "Ativo": True},
-    # Tipo Geral
-    {"Tabela": "Tipo Geral", "Opcao": "Assistencial",   "Ativo": True},
-    {"Tabela": "Tipo Geral", "Opcao": "Administrativa", "Ativo": True},
-    {"Tabela": "Tipo Geral", "Opcao": "Infraestrutura", "Ativo": True},
-    # Setores
-    {"Tabela": "Setor", "Opcao": "Emergência (REA)",       "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "UTI Adulto",             "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "UTI Neonatal",           "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Enfermaria Clínica",     "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Enfermaria Cirúrgica",   "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Centro Cirúrgico",       "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "CME",                    "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Farmácia",               "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Laboratório",            "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Radiologia/Imagem",      "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Ambulatório",            "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Recepção/Admissão",      "Ativo": True},
-    {"Tabela": "Setor", "Opcao": "Outro",                  "Ativo": True},
-    # Categorias
-    {"Tabela": "Categoria", "Opcao": "Lesão por Pressão (LPP)",              "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Queda do Paciente",                    "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Falha na Segurança Medicamentosa",     "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Falha de Identificação do Paciente",   "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Infecção Relacionada à Assistência",   "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Falha em Procedimento/Cirurgia",       "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Falha em Equipamento/Dispositivo",     "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Reação Transfusional",                 "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Evento de Comunicação/Informação",     "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Violência / Agressão",                 "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Extubação não Planejada",              "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Saída não Autorizada do Paciente",     "Ativo": True},
-    {"Tabela": "Categoria", "Opcao": "Outro Incidente Assistencial",         "Ativo": True},
-    # Subcategorias LPP
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio I",          "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio II",         "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio III",        "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Estágio IV",         "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Não Classificável",  "Ativo": True},
-    {"Tabela": "Subcategoria_LPP", "Opcao": "Tecido Mucoso",      "Ativo": True},
-    # Subcategorias Queda
-    {"Tabela": "Subcategoria_Queda", "Opcao": "Queda da própria altura",     "Ativo": True},
-    {"Tabela": "Subcategoria_Queda", "Opcao": "Queda do leito",              "Ativo": True},
-    {"Tabela": "Subcategoria_Queda", "Opcao": "Queda durante transferência", "Ativo": True},
-    {"Tabela": "Subcategoria_Queda", "Opcao": "Queda no banheiro",           "Ativo": True},
-    # Subcategorias Medicamento
-    {"Tabela": "Subcategoria_Med", "Opcao": "Dose incorreta",      "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Medicamento errado",  "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Via errada",          "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Horário errado",      "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Omissão de dose",     "Ativo": True},
-    {"Tabela": "Subcategoria_Med", "Opcao": "Paciente errado",     "Ativo": True},
-    # Gravidade
-    {"Tabela": "Gravidade", "Opcao": "Near Miss (Quase Evento - não atingiu o paciente)", "Ativo": True},
-    {"Tabela": "Gravidade", "Opcao": "Sem Dano (atingiu, sem lesão)",                     "Ativo": True},
-    {"Tabela": "Gravidade", "Opcao": "Dano Leve (lesão leve/temporária)",                 "Ativo": True},
-    {"Tabela": "Gravidade", "Opcao": "Dano Moderado (lesão moderada/temporária)",         "Ativo": True},
-    {"Tabela": "Gravidade", "Opcao": "Dano Grave (lesão grave/permanente)",               "Ativo": True},
-    {"Tabela": "Gravidade", "Opcao": "Óbito",                                             "Ativo": True},
-    # Fatores Causadores
-    {"Tabela": "Fator Causador", "Opcao": "Comunicação inadequada",          "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falha de processo/protocolo",     "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Sobrecarga de trabalho",          "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Equipamento inadequado/ausente",  "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Falta de treinamento",            "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Ambiente/infraestrutura",         "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Fator humano/distração",          "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Paciente não colaborativo",       "Ativo": True},
-    {"Tabela": "Fator Causador", "Opcao": "Outro",                           "Ativo": True},
-]
-
-
-def load_config() -> pd.DataFrame:
-    sb = get_client()
-    res = sb.table("config_tabelas").select("*").order("Tabela").execute()
-    rows = res.data or []
-    if not rows:
-        # Primeira execução: semeia opções padrão
-        sb.table("config_tabelas").insert(_OPCOES_PADRAO).execute()
-        res = sb.table("config_tabelas").select("*").order("Tabela").execute()
-        rows = res.data or []
-    return _rows_to_df(rows, COLUNAS_CONFIG)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -237,23 +310,6 @@ def load_field_flags() -> pd.DataFrame:
 def save_field_flag(row_id: int | str, obrigatorio: bool | str) -> None:
     sb = get_client()
     sb.table("config_campos").update({"Obrigatorio": _to_bool(obrigatorio)}).eq("id", row_id).execute()
-
-
-def save_config_opcao(row_id: int | str, opcao: str, ativo: bool) -> None:
-    """Atualiza o texto e/ou o status de uma opção de configuração."""
-    sb = get_client()
-    sb.table("config_tabelas").update({"Opcao": opcao, "Ativo": ativo}).eq("id", row_id).execute()
-
-
-def delete_config_opcao(row_id: int | str) -> None:
-    """Remove uma opção de configuração."""
-    sb = get_client()
-    sb.table("config_tabelas").delete().eq("id", row_id).execute()
-
-
-def add_config_opcao(tabela: str, opcao: str) -> None:
-    sb = get_client()
-    sb.table("config_tabelas").insert({"Tabela": tabela, "Opcao": opcao, "Ativo": True}).execute()
 
 
 def get_opcoes(df_conf: pd.DataFrame, tabela: str) -> list[str]:

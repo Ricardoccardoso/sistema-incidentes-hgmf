@@ -4,6 +4,7 @@ import os
 import base64
 from datetime import datetime, date
 import db  # camada de acesso ao Supabase
+from version import __version__
 
 st.set_page_config(
     page_title="Notificação de Incidente - HGMF",
@@ -151,6 +152,7 @@ st.markdown(f"""
 <div class="aviso-sigilo">
     🔒 <strong>Notificação sigilosa, a identificação do notificador é opcional.</strong>
 </div>
+<div style="text-align: right; font-size: 0.75rem; color: #999; margin-bottom: 12px;">v{__version__}</div>
 """, unsafe_allow_html=True)
 
 df_config = load_config()
@@ -208,7 +210,9 @@ with st.form("form_notificacao", clear_on_submit=True):
     with s1:
         data_nasc = st.date_input(
             label("Data_Nascimento", "Data de Nascimento do Paciente"),
-            value=date(2000,1,1),
+            value=date(2000, 1, 1),
+            min_value=date(1900, 1, 1),
+            max_value=date.today(),
             format="DD/MM/YYYY"
         )
     with s2:
@@ -241,6 +245,12 @@ with st.form("form_notificacao", clear_on_submit=True):
         subcategoria = st.selectbox("Tipo de Falha Medicamentosa", get_opcoes(df_config, "Subcategoria_Med"))
         medicamento  = st.text_input("Medicamento(s) envolvido(s)", placeholder="Ex: Heparina 5000 UI")
 
+    descricao = st.text_area(
+        "Descreva o que aconteceu (O quê? Como? Onde? Sequência dos fatos)",
+        height=130,
+        placeholder="Relate os fatos de forma objetiva. Ex: Paciente em pós-op imediato foi encontrado no chão ao lado do leito às 14h30..."
+    )
+
     # ── BLOCO 3: Gravidade e Dano ─────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">⚠️ Gravidade e Dano</div>', unsafe_allow_html=True)
     gravidade_ops = ordenar_gravidade(get_opcoes(df_config, "Gravidade"))
@@ -249,32 +259,20 @@ with st.form("form_notificacao", clear_on_submit=True):
     # Observação: campo de dano e caixas de comunicação removidos conforme solicitado
 
     # ── BLOCO 4: Fatores e Descrição ──────────────────────────────────────────
-    st.markdown('<div class="secao-titulo">🔍 Fatores Causadores e Descrição</div>', unsafe_allow_html=True)
+    st.markdown('<div class="secao-titulo">🔍 Fatores Causadores</div>', unsafe_allow_html=True)
     fatores = st.multiselect(
         "Fatores que contribuíram para o incidente (selecione todos os itens aplicáveis)",
         get_opcoes(df_config, "Fator Causador")
     )
 
-    descricao = st.text_area(
-        "Descreva o que aconteceu (O quê? Como? Onde? Sequência dos fatos)",
-        height=130,
-        placeholder="Relate os fatos de forma objetiva. Ex: Paciente em pós-op imediato foi encontrado no chão ao lado do leito às 14h30..."
-    )
-
     acoes_imediatas = st.text_area(
         "Ações imediatas realizadas (o que foi feito logo após o incidente?)",
         height=80,
-        placeholder="Ex: Chamado médico, curativo aplicado, grade do leito levantada..."
-    )
-
-    sugestao = st.text_area(
-        "Sugestão para evitar que isso ocorra novamente (opcional)",
-        height=70,
-        placeholder="Ex: Revisar protocolo de contenção de pacientes agitados..."
+        placeholder="Ex: Comunicado ao médico, feita gestão da lesão…"
     )
 
     # ── BLOCO 5: Identificação Opcional ──────────────────────────────────────
-    st.markdown('<div class="secao-titulo">👤 Sua Identificação (totalmente opcional)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="secao-titulo">👤 Sua Identificação</div>', unsafe_allow_html=True)
     st.caption("Sua identidade nunca será vinculada ao relato de forma pública. É opcional e serve apenas para contato em caso de dúvida pelo Núcleo.")
     c9, c10 = st.columns(2)
     with c9:
@@ -324,7 +322,6 @@ with st.form("form_notificacao", clear_on_submit=True):
                 "Fatores_Causadores":       ", ".join(fatores),
                 "Descricao":               descricao,
                 "Acoes_Imediatas":          acoes_imediatas,
-                "Sugestao_Melhoria":        sugestao,
                 "Relator":                  relator,
                 "Funcao_Relator":           funcao,
                 "Status":                   "Novo"
