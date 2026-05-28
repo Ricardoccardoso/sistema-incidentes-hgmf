@@ -116,7 +116,10 @@ div[data-testid="stFormSubmitButton"] > button {
 """, unsafe_allow_html=True)
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
-SENHA_ADMIN_MESTRE = hashlib.sha256("sp#9198sider".encode()).hexdigest()
+try:
+    SENHA_ADMIN_MESTRE = st.secrets["admin_master"]["hash"]
+except (KeyError, FileNotFoundError, AttributeError):
+    SENHA_ADMIN_MESTRE = ""  # login mestre desabilitado se não configurado
 
 COLUNAS_DADOS = [
     "id", "Data_Registro", "Data_Incidente", "Turno", "Setor",
