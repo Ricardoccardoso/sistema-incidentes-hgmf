@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import os
 import base64
@@ -351,3 +352,60 @@ with st.form("form_notificacao", clear_on_submit=True):
             db.save_incidente(novo)
             st.success("✅ Notificação enviada com sucesso! Obrigado por contribuir com a segurança do nosso hospital.")
             st.balloons()
+
+# ── Calcula idade ao vivo via JS (blur no campo Data de Nascimento) ───────────
+components.html("""
+<script>
+(function(){
+  function calcAge(s){
+    var p=s.split('/');
+    if(p.length!==3)return null;
+    var d=+p[0],m=+p[1],y=+p[2];
+    if(!d||!m||!y||y<1900||y>2100)return null;
+    var t=new Date(),a=t.getFullYear()-y;
+    if(t.getMonth()+1<m||(t.getMonth()+1===m&&t.getDate()<d))a--;
+    return(a>=0&&a<=130)?a:null;
+  }
+  var lastAge='—';
+  function findInputs(){
+    try{
+      var doc=window.parent.document;
+      var nascEl=null,idadeEl=null;
+      doc.querySelectorAll('[data-testid="stDateInput"]').forEach(function(el){
+        var l=el.querySelector('label');
+        if(l&&l.textContent.indexOf('Nascimento')>=0)nascEl=el.querySelector('input');
+      });
+      doc.querySelectorAll('[data-testid="stTextInput"]').forEach(function(el){
+        var l=el.querySelector('label');
+        if(l&&l.textContent.trim()==='Idade')idadeEl=el.querySelector('input');
+      });
+      return{nasc:nascEl,idade:idadeEl};
+    }catch(e){return{nasc:null,idade:null};}
+  }
+  function applyAge(idadeEl){
+    if(idadeEl&&lastAge!=='—')idadeEl.value=lastAge;
+  }
+  var hooked=false;
+  setInterval(function(){
+    var els=findInputs();
+    // Reaplica caso React sobrescreva o valor
+    applyAge(els.idade);
+    // Conecta listener apenas uma vez por instância do input
+    if(els.nasc&&!els.nasc._hgmf){
+      els.nasc._hgmf=true;
+      hooked=true;
+      function upd(){
+        var age=calcAge(els.nasc.value);
+        lastAge=age!==null?age+' anos':'—';
+        if(els.idade)els.idade.value=lastAge;
+        // Re-aplica após possível re-render do React
+        setTimeout(function(){var e=findInputs();if(e.idade)e.idade.value=lastAge;},120);
+        setTimeout(function(){var e=findInputs();if(e.idade)e.idade.value=lastAge;},450);
+      }
+      els.nasc.addEventListener('blur',upd);
+      els.nasc.addEventListener('change',upd);
+    }
+  },500);
+})();
+</script>
+""", height=0, scrolling=False)
