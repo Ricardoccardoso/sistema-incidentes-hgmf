@@ -74,7 +74,7 @@ COLUNAS_INCIDENTES = [
     "Leito", "Tipo_Geral", "Categoria_Incidente", "Subcategoria",
     "Medicamento_Envolvido", "Gravidade",
     "Fatores_Causadores", "Descricao", "Acoes_Imediatas", "Sugestao_Melhoria",
-    "Data_Relato", "Hora_Relato", "Nome_Paciente", "Data_Nascimento",
+    "Data_Relato", "Hora_Relato", "Nome_Paciente", "Data_Nascimento", "Raca_Cor",
     "Relator", "Funcao_Relator", "Status",
 ]
 
@@ -294,7 +294,7 @@ _DEFAULT_CAMPOS = [
     "Acoes_Imediatas","Categoria_Incidente","Data_Incidente","Data_Nascimento",
     "Data_Registro","Data_Relato","Descricao","Fatores_Causadores","Funcao_Relator",
     "Gravidade","Hora_Relato","Leito","Medicamento_Envolvido","Nome_Paciente",
-    "Relator","Setor","Status","Subcategoria","Sugestao_Melhoria","Tipo_Geral","Turno",
+    "Raca_Cor","Relator","Setor","Status","Subcategoria","Sugestao_Melhoria","Tipo_Geral","Turno",
 ]
 
 def load_field_flags() -> pd.DataFrame:

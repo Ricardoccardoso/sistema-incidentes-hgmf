@@ -221,7 +221,10 @@ with st.form("form_notificacao", clear_on_submit=True):
             format="DD/MM/YYYY"
         )
     with s2:
-        pass
+        raca_cor = st.selectbox(
+            label("Raca_Cor", "Raça / Cor"),
+            ["Não informado", "Branca", "Preta", "Parda", "Amarela", "Indígena"]
+        )
 
     # ── BLOCO 2: Tipo do Incidente ────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">📋 Tipo do Incidente</div>', unsafe_allow_html=True)
@@ -329,6 +332,7 @@ with st.form("form_notificacao", clear_on_submit=True):
                 "Hora_Relato":              str(hora_relato) if hora_relato else None,
                 "Nome_Paciente":            nome_paciente,
                 "Data_Nascimento":          str(data_nasc) if data_nasc else None,
+                "Raca_Cor":                 raca_cor,
                 "Fatores_Causadores":       ", ".join(fatores),
                 "Descricao":               descricao,
                 "Acoes_Imediatas":          acoes_imediatas,

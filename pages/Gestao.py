@@ -171,6 +171,7 @@ CAMPO_LABELS = {
     "Leito":                "Leito",
     "Medicamento_Envolvido":"Medicamento Envolvido",
     "Nome_Paciente":        "Nome do Paciente",
+    "Raca_Cor":             "Raça / Cor",
     "Relator":              "Nome do Relator",
     "Setor":                "Setor / Unidade",
     "Status":               "Status",

@@ -148,6 +148,7 @@ ALTER TABLE incidentes ADD COLUMN IF NOT EXISTS "Data_Relato" DATE;
 ALTER TABLE incidentes ADD COLUMN IF NOT EXISTS "Hora_Relato" TEXT;
 ALTER TABLE incidentes ADD COLUMN IF NOT EXISTS "Nome_Paciente" TEXT;
 ALTER TABLE incidentes ADD COLUMN IF NOT EXISTS "Data_Nascimento" DATE;
+ALTER TABLE incidentes ADD COLUMN IF NOT EXISTS "Raca_Cor" TEXT;
 
 -- 3) Renomear coluna Cama_Leito para Leito se existir
 DO $$
