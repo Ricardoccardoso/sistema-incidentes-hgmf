@@ -170,7 +170,49 @@ def label(campo, texto):
         req = False
     return texto + (" *" if req else "")
 
+# ── Banner de sucesso após envio ─────────────────────────────────────────────
+if st.session_state.pop("_form_submitted", False):
+    st.success("✅ Notificação enviada com sucesso! Obrigado por contribuir com a segurança do nosso hospital.")
+    st.balloons()
+
+# ── Dados do Relato / Paciente — fora do form para cálculo de idade ao vivo ──
+st.markdown('<div class="secao-titulo">📝 Dados do Relato / Paciente</div>', unsafe_allow_html=True)
+_dn_col, _id_col = st.columns([2, 1])
+with _dn_col:
+    data_nasc = st.date_input(
+        label("Data_Nascimento", "Data de Nascimento do Paciente"),
+        value=None,
+        min_value=date(1900, 1, 1),
+        max_value=date.today(),
+        format="DD/MM/YYYY",
+        key="_data_nasc"
+    )
+with _id_col:
+    if data_nasc:
+        hoje = date.today()
+        idade = hoje.year - data_nasc.year - ((hoje.month, hoje.day) < (data_nasc.month, data_nasc.day))
+        st.text_input("Idade", value=f"{idade} anos", disabled=True)
+    else:
+        st.text_input("Idade", value="—", disabled=True)
+
 with st.form("form_notificacao", clear_on_submit=True):
+
+    r1, r2, r3, r4 = st.columns([1.5, 1.5, 3, 1.5])
+    with r1:
+        data_relato = st.date_input(
+            label("Data_Relato", "Data do Relato"),
+            value=date.today(),
+            format="DD/MM/YYYY"
+        )
+    with r2:
+        hora_relato = st.time_input(label("Hora_Relato", "Hora do Relato"))
+    with r3:
+        nome_paciente = st.text_input(label("Nome_Paciente", "Nome do Paciente"), placeholder="Ex: João da Silva")
+    with r4:
+        raca_cor = st.selectbox(
+            label("Raca_Cor", "Raça / Cor"),
+            ["Não informado", "Branca", "Preta", "Parda", "Amarela", "Indígena"]
+        )
 
     # ── BLOCO 1: Dados do Evento ──────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">📅 Dados do Evento</div>', unsafe_allow_html=True)
@@ -197,42 +239,6 @@ with st.form("form_notificacao", clear_on_submit=True):
         setor = st.selectbox(label("Setor", "Setor / Unidade de Ocorrência"), get_opcoes(df_config, "Setor"))
     with c5:
         cama = st.text_input(label("Leito", "Leito"), placeholder="Ex: 12A")
-
-    st.markdown('<div class="secao-titulo">📝 Dados do Relato / Paciente</div>', unsafe_allow_html=True)
-    r1, r2, r3 = st.columns([1.5, 1.5, 4])
-    with r1:
-        data_relato = st.date_input(
-            label("Data_Relato", "Data do Relato"),
-            value=date.today(),
-            format="DD/MM/YYYY"
-        )
-    with r2:
-        hora_relato = st.time_input(label("Hora_Relato", "Hora do Relato"))
-    with r3:
-        nome_paciente = st.text_input(label("Nome_Paciente", "Nome do Paciente"), placeholder="Ex: João da Silva")
-
-    s1, s2, s3 = st.columns([2, 1, 2])
-    with s1:
-        data_nasc = st.date_input(
-            label("Data_Nascimento", "Data de Nascimento do Paciente"),
-            value=None,
-            min_value=date(1900, 1, 1),
-            max_value=date.today(),
-            format="DD/MM/YYYY"
-        )
-    with s2:
-        if data_nasc:
-            hoje = date.today()
-            idade = hoje.year - data_nasc.year - ((hoje.month, hoje.day) < (data_nasc.month, data_nasc.day))
-            idade_txt = f"{idade} anos"
-        else:
-            idade_txt = "—"
-        st.text_input("Idade", value=idade_txt, disabled=True)
-    with s3:
-        raca_cor = st.selectbox(
-            label("Raca_Cor", "Raça / Cor"),
-            ["Não informado", "Branca", "Preta", "Parda", "Amarela", "Indígena"]
-        )
 
     # ── BLOCO 2: Tipo do Incidente ────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">📋 Tipo do Incidente</div>', unsafe_allow_html=True)
@@ -349,5 +355,6 @@ with st.form("form_notificacao", clear_on_submit=True):
                 "Status":                   "Novo"
             }
             db.save_incidente(novo)
-            st.success("✅ Notificação enviada com sucesso! Obrigado por contribuir com a segurança do nosso hospital.")
-            st.balloons()
+            st.session_state["_form_submitted"] = True
+            st.session_state["_data_nasc"] = None
+            st.rerun()
