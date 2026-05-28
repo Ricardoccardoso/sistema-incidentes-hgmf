@@ -138,9 +138,14 @@ MENU_OPTIONS   = [
     ("👥 Usuários", "Usuários"),
 ]
 MENU_LABELS    = [label for _, label in MENU_OPTIONS]
+
+# Capacidades especiais (não são menus, mas ações dentro das páginas)
+CAP_EDITAR    = "cap_editar_notificacoes"
+CAP_REGISTROS = "cap_registros_equipe"
+
 PRESET_PERMISSIONS = {
-    "Acesso Total": MENU_LABELS,
-    "Apenas Relatórios": ["Dashboard", "Notificações", "Relatórios", "Exportar Dados"],
+    "Acesso Total": MENU_LABELS + [CAP_EDITAR, CAP_REGISTROS],
+    "Apenas Relatórios": ["Dashboard", "Notificações", "Relatórios", "Exportar Dados", CAP_REGISTROS],
     "Apenas Configurar Tabelas": ["Configurar Menus", "Usuários"],
 }
 
@@ -152,9 +157,12 @@ def parse_permissions(value):
     return []
 
 def permissions_to_string(selected):
-    if set(selected) == set(MENU_LABELS):
+    if set(selected) == set(MENU_LABELS + [CAP_EDITAR, CAP_REGISTROS]):
         return "Acesso Total"
     return ";".join(selected)
+
+def has_perm(perm_str, capability):
+    return capability in parse_permissions(perm_str)
 
 CAMPO_LABELS = {
     "Acoes_Imediatas":      "Ações Imediatas",
@@ -581,8 +589,8 @@ elif menu == "📋 Notificações":
                 st.markdown("**Sugestão de Melhoria**")
                 st.warning(sug_val)
 
-            # Edição (apenas administrador - não atribuível)
-            if st.session_state.get("user") == "admin":
+            # Edição disponível para usuários com permissão Editar Notificações
+            if has_perm(perm, CAP_EDITAR):
                 st.markdown('---')
                 if st.button('✏️ Editar registro', key=f'edit_btn_{idx}'):
                     st.session_state[f'edit_{idx}'] = True
@@ -638,7 +646,7 @@ elif menu == "📋 Notificações":
                             st.rerun()
 
             # Registros de ação da equipe de segurança
-            if perm in ["Acesso Total", "Apenas Relatórios"]:
+            if has_perm(perm, CAP_REGISTROS):
                 st.markdown("---")
                 st.markdown("**📋 Registros da Equipe de Segurança**")
                 incidente_id = row.get("id")
@@ -672,7 +680,7 @@ elif menu == "📋 Notificações":
                         st.warning("Digite a descrição da ação.")
 
             # Gerenciamento de status
-            if perm in ["Acesso Total", "Apenas Relatórios"]:
+            if has_perm(perm, CAP_REGISTROS):
                 st.markdown("---")
                 col_s1, col_s2 = st.columns([2, 1])
                 with col_s1:
@@ -987,33 +995,54 @@ elif menu == "👥 Usuários":
         st.dataframe(df_show, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        st.subheader("🔒 Alterar Status / Permissão")
-        usuario_sel = st.selectbox("Selecione o usuário", df_usuarios["Usuario"].tolist(), key="usr_sel")
-        row_sel = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
+        st.subheader("✏️ Editar Usuário")
+        usuario_sel = st.selectbox("Usuário", df_usuarios["Usuario"].tolist(), key="usr_sel")
+        row_sel     = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
+        user_perms  = parse_permissions(row_sel["Permissao"])
+
         col_pa, col_pb = st.columns(2)
         with col_pa:
+            st.markdown("**Menus autorizados**")
             selected_menus = st.multiselect(
-                "Menus autorizados",
+                "Menus",
                 MENU_LABELS,
-                default=parse_permissions(row_sel["Permissao"]),
-                key="menus_sel"
+                default=[p for p in user_perms if p in MENU_LABELS],
+                key="menus_sel",
+                label_visibility="collapsed"
             )
         with col_pb:
-            novo_ativo = st.checkbox("Usuário Ativo", value=bool(row_sel["Ativo"]), key="novo_ativo")
+            st.markdown("**Permissões especiais**")
+            cap_editar_sel = st.checkbox(
+                "✏️ Editar Notificações",
+                value=has_perm(row_sel["Permissao"], CAP_EDITAR),
+                key="cap_editar_sel"
+            )
+            cap_reg_sel = st.checkbox(
+                "📋 Registros da Equipe de Segurança",
+                value=has_perm(row_sel["Permissao"], CAP_REGISTROS),
+                key="cap_reg_sel"
+            )
+            novo_ativo = st.checkbox("✅ Usuário Ativo", value=bool(row_sel["Ativo"]), key="novo_ativo")
 
         col_pc, col_pd = st.columns(2)
         with col_pc:
-            if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
+            if st.button("💾 Salvar", type="primary", use_container_width=True):
+                sel_caps = []
+                if cap_editar_sel: sel_caps.append(CAP_EDITAR)
+                if cap_reg_sel:    sel_caps.append(CAP_REGISTROS)
                 row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
                 try:
-                    db.update_user(row_u["id"], {"Permissao": permissions_to_string(selected_menus), "Ativo": novo_ativo})
+                    db.update_user(row_u["id"], {
+                        "Permissao": permissions_to_string(selected_menus + sel_caps),
+                        "Ativo": novo_ativo
+                    })
                     st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Usuário atualizado com sucesso!"}
                 except Exception as e:
                     st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {e}"}
                 st.rerun()
         with col_pd:
             if usuario_sel != st.session_state["user"] and usuario_sel != "admin":
-                if st.button("🗑️ Remover Usuário", use_container_width=True):
+                if st.button("🗑️ Remover", use_container_width=True):
                     row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
                     try:
                         db.delete_user(row_u["id"])
@@ -1044,8 +1073,14 @@ elif menu == "👥 Usuários":
             n_user  = st.text_input("Login (sem espaços)")
             n_senha = st.text_input("Senha", type="password")
             n_conf  = st.text_input("Confirmar Senha", type="password")
-            n_menus = st.multiselect("Menus autorizados", MENU_LABELS, default=["Dashboard", "Notificações"])
-            criar   = st.form_submit_button("✅ Criar Usuário", use_container_width=True)
+            st.markdown("**Menus autorizados**")
+            n_menus = st.multiselect("Menus", MENU_LABELS,
+                                     default=["Dashboard", "Notificações"],
+                                     label_visibility="collapsed")
+            st.markdown("**Permissões especiais**")
+            nc_editar    = st.checkbox("✏️ Editar Notificações", value=False)
+            nc_registros = st.checkbox("📋 Registros da Equipe de Segurança", value=False)
+            criar = st.form_submit_button("✅ Criar Usuário", use_container_width=True)
 
             if criar:
                 if not n_user.strip() or not n_senha.strip():
@@ -1061,10 +1096,13 @@ elif menu == "👥 Usuários":
                 elif not n_menus:
                     st.error("Selecione ao menos um menu para o usuário.")
                 else:
+                    n_caps = []
+                    if nc_editar:    n_caps.append(CAP_EDITAR)
+                    if nc_registros: n_caps.append(CAP_REGISTROS)
                     novo_usr = {
                         "Usuario":      n_user.strip(),
                         "Senha_Hash":   hash_senha(n_senha),
-                        "Permissao":    permissions_to_string(n_menus),
+                        "Permissao":    permissions_to_string(n_menus + n_caps),
                         "Ativo":        True,
                         "Data_Criacao": date.today().strftime("%Y-%m-%d"),
                     }
@@ -1076,11 +1114,10 @@ elif menu == "👥 Usuários":
                     st.rerun()
 
         st.markdown("---")
-        st.markdown("**ℹ️ Níveis de Acesso**")
+        st.markdown("**ℹ️ Permissões Especiais**")
         st.markdown("""
-        - **Acesso Total**: Dashboard, Notificações, Relatórios, Exportar, Configurar Menus e Usuários
-        - **Apenas Relatórios**: Dashboard, Notificações, Relatórios e Exportar
-        - **Apenas Configurar Tabelas**: Configurar Menus e Usuários
+        - **✏️ Editar Notificações**: permite abrir e salvar o formulário de edição de um registro
+        - **📋 Registros da Equipe**: permite visualizar, inserir e alterar o status das notificações
         """)
         st.markdown("---")
         st.markdown("**🔑 Login Mestre do Sistema**")

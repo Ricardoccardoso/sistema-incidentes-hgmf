@@ -353,7 +353,7 @@ with st.form("form_notificacao", clear_on_submit=True):
             st.success("✅ Notificação enviada com sucesso! Obrigado por contribuir com a segurança do nosso hospital.")
             st.balloons()
 
-# ── Calcula idade ao vivo via JS (blur no campo Data de Nascimento) ───────────
+# ── Calcula idade ao vivo via polling do campo Data de Nascimento ─────────────
 components.html("""
 <script>
 (function(){
@@ -366,8 +366,8 @@ components.html("""
     if(t.getMonth()+1<m||(t.getMonth()+1===m&&t.getDate()<d))a--;
     return(a>=0&&a<=130)?a:null;
   }
-  var lastAge='—';
-  function findInputs(){
+  var prevVal='',lastAge='—';
+  setInterval(function(){
     try{
       var doc=window.parent.document;
       var nascEl=null,idadeEl=null;
@@ -379,33 +379,15 @@ components.html("""
         var l=el.querySelector('label');
         if(l&&l.textContent.trim()==='Idade')idadeEl=el.querySelector('input');
       });
-      return{nasc:nascEl,idade:idadeEl};
-    }catch(e){return{nasc:null,idade:null};}
-  }
-  function applyAge(idadeEl){
-    if(idadeEl&&lastAge!=='—')idadeEl.value=lastAge;
-  }
-  var hooked=false;
-  setInterval(function(){
-    var els=findInputs();
-    // Reaplica caso React sobrescreva o valor
-    applyAge(els.idade);
-    // Conecta listener apenas uma vez por instância do input
-    if(els.nasc&&!els.nasc._hgmf){
-      els.nasc._hgmf=true;
-      hooked=true;
-      function upd(){
-        var age=calcAge(els.nasc.value);
+      if(!nascEl||!idadeEl)return;
+      if(nascEl.value!==prevVal){
+        prevVal=nascEl.value;
+        var age=calcAge(prevVal);
         lastAge=age!==null?age+' anos':'—';
-        if(els.idade)els.idade.value=lastAge;
-        // Re-aplica após possível re-render do React
-        setTimeout(function(){var e=findInputs();if(e.idade)e.idade.value=lastAge;},120);
-        setTimeout(function(){var e=findInputs();if(e.idade)e.idade.value=lastAge;},450);
       }
-      els.nasc.addEventListener('blur',upd);
-      els.nasc.addEventListener('change',upd);
-    }
-  },500);
+      if(lastAge!=='—')idadeEl.value=lastAge;
+    }catch(e){}
+  },300);
 })();
 </script>
 """, height=0, scrolling=False)
