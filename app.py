@@ -211,7 +211,7 @@ with st.form("form_notificacao", clear_on_submit=True):
     with r3:
         nome_paciente = st.text_input(label("Nome_Paciente", "Nome do Paciente"), placeholder="Ex: João da Silva")
 
-    s1, s2 = st.columns([1, 2])
+    s1, s2, s3 = st.columns([2, 1, 2])
     with s1:
         data_nasc = st.date_input(
             label("Data_Nascimento", "Data de Nascimento do Paciente"),
@@ -221,6 +221,14 @@ with st.form("form_notificacao", clear_on_submit=True):
             format="DD/MM/YYYY"
         )
     with s2:
+        if data_nasc:
+            hoje = date.today()
+            idade = hoje.year - data_nasc.year - ((hoje.month, hoje.day) < (data_nasc.month, data_nasc.day))
+            idade_txt = f"{idade} anos"
+        else:
+            idade_txt = "—"
+        st.text_input("Idade", value=idade_txt, disabled=True)
+    with s3:
         raca_cor = st.selectbox(
             label("Raca_Cor", "Raça / Cor"),
             ["Não informado", "Branca", "Preta", "Parda", "Amarela", "Indígena"]
