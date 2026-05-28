@@ -194,3 +194,14 @@ VALUES
     ('Funcao_Relator', FALSE),
     ('Status', FALSE)
 ON CONFLICT ("Campo") DO NOTHING;
+
+-- 6) Tabela de registros de ação da equipe de segurança
+CREATE TABLE IF NOT EXISTS registro_acoes (
+    id BIGSERIAL PRIMARY KEY,
+    "Incidente_Id" BIGINT NOT NULL,
+    "Data_Registro" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "Descricao" TEXT NOT NULL,
+    "Usuario" TEXT
+);
+
+ALTER TABLE registro_acoes DISABLE ROW LEVEL SECURITY;

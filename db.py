@@ -286,6 +286,39 @@ def delete_incidente(row_id: int | str) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# REGISTROS DE AÇÃO (acompanhamento pela equipe de segurança)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def load_registros_acao(incidente_id) -> pd.DataFrame:
+    sb = get_client()
+    try:
+        res = (sb.table("registro_acoes")
+               .select("*")
+               .eq("Incidente_Id", incidente_id)
+               .order("Data_Registro", desc=False)
+               .execute())
+        rows = res.data or []
+    except Exception:
+        rows = []
+    return _rows_to_df(rows, ["id", "Incidente_Id", "Data_Registro", "Descricao", "Usuario"])
+
+
+def save_registro_acao(incidente_id, descricao: str, usuario: str) -> None:
+    sb = get_client()
+    sb.table("registro_acoes").insert({
+        "Incidente_Id": incidente_id,
+        "Data_Registro": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Descricao": descricao.strip(),
+        "Usuario": usuario,
+    }).execute()
+
+
+def delete_registro_acao(row_id) -> None:
+    sb = get_client()
+    sb.table("registro_acoes").delete().eq("id", row_id).execute()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # FLAGS DE CAMPOS (obrigatoriedade)
 # Tabela esperada: config_campos (Campo TEXT, Obrigatorio BOOLEAN)
 # ══════════════════════════════════════════════════════════════════════════════

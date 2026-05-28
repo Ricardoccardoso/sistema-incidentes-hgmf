@@ -571,13 +571,15 @@ elif menu == "📋 Notificações":
             st.markdown("**Descrição Completa**")
             st.info(row.get("Descricao",""))
 
-            if row.get("Acoes_Imediatas"):
+            acoes_val = str(row.get("Acoes_Imediatas", "") or "").strip()
+            if acoes_val and acoes_val.lower() != "nan":
                 st.markdown("**Ações Imediatas Realizadas**")
-                st.success(row.get("Acoes_Imediatas",""))
+                st.success(acoes_val)
 
-            if row.get("Sugestao_Melhoria"):
+            sug_val = str(row.get("Sugestao_Melhoria", "") or "").strip()
+            if sug_val and sug_val.lower() != "nan":
                 st.markdown("**Sugestão de Melhoria**")
-                st.warning(row.get("Sugestao_Melhoria",""))
+                st.warning(sug_val)
 
             # Edição (apenas administrador - não atribuível)
             if st.session_state.get("user") == "admin":
@@ -634,6 +636,40 @@ elif menu == "📋 Notificações":
                             except Exception as e:
                                 st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {e}"}
                             st.rerun()
+
+            # Registros de ação da equipe de segurança
+            if perm in ["Acesso Total", "Apenas Relatórios"]:
+                st.markdown("---")
+                st.markdown("**📋 Registros da Equipe de Segurança**")
+                incidente_id = row.get("id")
+                df_reg = db.load_registros_acao(incidente_id)
+                if not df_reg.empty:
+                    df_reg_show = df_reg[["Data_Registro", "Usuario", "Descricao"]].copy()
+                    df_reg_show.columns = ["Data / Hora", "Usuário", "Descrição"]
+                    df_reg_show["Data / Hora"] = df_reg_show["Data / Hora"].astype(str).str[:16]
+                    st.dataframe(df_reg_show, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Nenhum registro de ação ainda.")
+
+                with st.form(f"form_acao_{idx}"):
+                    nova_acao = st.text_area(
+                        "Descreva a ação realizada pela equipe",
+                        height=80,
+                        placeholder="Ex: Notificado o médico responsável, aberta investigação...",
+                        key=f"ta_acao_{idx}"
+                    )
+                    submit_acao = st.form_submit_button("➕ Inserir Registro", use_container_width=True)
+
+                if submit_acao:
+                    if nova_acao.strip():
+                        try:
+                            db.save_registro_acao(incidente_id, nova_acao, st.session_state.get("user", ""))
+                            st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Registro inserido com sucesso!"}
+                        except Exception as e:
+                            st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao inserir registro: {e}"}
+                        st.rerun()
+                    else:
+                        st.warning("Digite a descrição da ação.")
 
             # Gerenciamento de status
             if perm in ["Acesso Total", "Apenas Relatórios"]:
