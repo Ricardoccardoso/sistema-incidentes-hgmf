@@ -309,7 +309,18 @@ if _banner:
 
 perm = st.session_state["permissao"]
 
-# Sidebar
+# Monta lista de menus permitidos
+menu_items = []
+user_perms = parse_permissions(perm)
+for display, label in MENU_OPTIONS:
+    if label in user_perms:
+        menu_items.append(display)
+
+if not menu_items:
+    st.warning("Seu usuário não possui menus autorizados. Contate o administrador.")
+    st.stop()
+
+# Sidebar — apenas identificação do usuário (informativo, opcional no celular)
 with st.sidebar:
     st.markdown(f"""
     <div style="text-align:center; padding:16px 0 8px;">
@@ -318,24 +329,23 @@ with st.sidebar:
       <p style="font-size:0.76rem; opacity:0.7; margin:0;">{perm}</p>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown("---")
 
-    menu_items = []
-    user_perms = parse_permissions(perm)
-    for display, label in MENU_OPTIONS:
-        if label in user_perms:
-            menu_items.append(display)
-
-    if not menu_items:
-        st.warning("Seu usuário não possui menus autorizados. Contate o administrador.")
-        st.stop()
-
-    menu = st.radio("Navegação", menu_items, label_visibility="collapsed")
-    st.markdown("---")
+# ── Navegação no topo — acessível em qualquer dispositivo ────────────────────
+_nc1, _nc2, _nc3 = st.columns([1, 5, 1])
+with _nc1:
+    st.markdown(
+        f"<div style='padding-top:6px; font-size:0.85rem; font-weight:600; color:#0d47a1;'>"
+        f"👤 {st.session_state['user']}</div>",
+        unsafe_allow_html=True
+    )
+with _nc2:
+    menu = st.selectbox("Módulo", menu_items, label_visibility="collapsed")
+with _nc3:
     if st.button("🚪 Sair", use_container_width=True):
         for k in ["logado", "user", "permissao"]:
             st.session_state[k] = "" if k != "logado" else False
         st.rerun()
+st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: DASHBOARD
