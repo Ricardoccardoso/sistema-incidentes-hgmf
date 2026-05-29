@@ -330,22 +330,26 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-# ── Navegação no topo — acessível em qualquer dispositivo ────────────────────
-_nc1, _nc2, _nc3 = st.columns([1, 5, 1])
-with _nc1:
-    st.markdown(
-        f"<div style='padding-top:6px; font-size:0.85rem; font-weight:600; color:#0d47a1;'>"
-        f"👤 {st.session_state['user']}</div>",
-        unsafe_allow_html=True
-    )
-with _nc2:
+# ── Barra de navegação — acessível em qualquer dispositivo ───────────────────
+st.markdown(f"""
+<div style="background:linear-gradient(135deg,#0d47a1,#1565c0);
+            border-radius:10px; padding:10px 18px; margin-bottom:12px;
+            display:flex; justify-content:space-between; align-items:center;">
+  <span style="color:#fff; font-size:0.88rem; font-weight:600;">
+    👤 {st.session_state['user']}
+    <span style="font-weight:400; opacity:0.75; font-size:0.78rem; margin-left:8px;">{perm}</span>
+  </span>
+</div>
+""", unsafe_allow_html=True)
+
+_nc_menu, _nc_sair = st.columns([6, 1])
+with _nc_menu:
     menu = st.selectbox("Módulo", menu_items, label_visibility="collapsed")
-with _nc3:
+with _nc_sair:
     if st.button("🚪 Sair", use_container_width=True):
         for k in ["logado", "user", "permissao"]:
             st.session_state[k] = "" if k != "logado" else False
         st.rerun()
-st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: DASHBOARD
