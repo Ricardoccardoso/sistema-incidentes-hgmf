@@ -18,10 +18,12 @@ Sistema de permissões:
 """
 
 import streamlit as st
+import streamlit.components.v1 as components  # necessário para injetar JS de impressão
 import pandas as pd
 import altair as alt
 import hashlib
 import html as html_mod
+import json as _json_mod
 from datetime import datetime, date, timedelta
 import io
 import db  # camada de acesso ao Supabase
@@ -795,16 +797,39 @@ elif menu == "📋 Notificações":
                 st.markdown("**Sugestão de Melhoria**")
                 st.warning(sug_val)
 
-            # Botão de impressão: gera HTML formatado para esta notificação e oferece download
+            # Botão de impressão: abre nova aba com conteúdo formatado e dispara window.print()
             st.markdown("---")
-            st.download_button(
-                "🖨️ Gerar PDF desta notificação",
-                data=gerar_html_impressao(pd.DataFrame([row.to_dict()])),
-                file_name=f"notificacao_{row.get('id','nd')}_{date.today()}.html",
-                mime="text/html",
-                key=f"print_{idx}",
-                use_container_width=True
-            )
+            if st.button("🖨️ Imprimir esta notificação", key=f"print_{idx}", use_container_width=True):
+                # Gera o HTML e armazena na sessão para o componente JS abaixo
+                st.session_state[f"_print_html_{idx}"] = gerar_html_impressao(
+                    pd.DataFrame([row.to_dict()])
+                )
+
+            # Componente JS renderizado apenas após o clique — abre janela e imprime
+            if f"_print_html_{idx}" in st.session_state:
+                _ph    = st.session_state.pop(f"_print_html_{idx}")
+                _ph_js = _json_mod.dumps(_ph)  # escapa corretamente para literal JS
+                components.html(f"""
+                <script>
+                (function(){{
+                  var html = {_ph_js};
+                  try {{
+                    var blob = new Blob([html], {{type:'text/html;charset=utf-8'}});
+                    var url  = URL.createObjectURL(blob);
+                    var pw   = window.parent.open(url, '_blank');
+                    if (pw) {{
+                      pw.addEventListener('load', function(){{ pw.focus(); pw.print(); }});
+                    }} else {{
+                      document.body.innerHTML =
+                        '<p style="font-family:Arial,sans-serif;font-size:13px;padding:8px;">'
+                        +'⚠️ Popup bloqueado. '
+                        +'<a href="'+url+'" target="_blank" style="color:#0d47a1;font-weight:600;">'
+                        +'Clique aqui para abrir e imprimir</a></p>';
+                    }}
+                  }} catch(e) {{}}
+                }})();
+                </script>
+                """, height=40, scrolling=False)
 
             # Edição disponível para usuários com permissão Editar Notificações
             if has_perm(perm, CAP_EDITAR):
