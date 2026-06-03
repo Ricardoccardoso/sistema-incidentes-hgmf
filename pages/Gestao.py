@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import hashlib
+import html as html_mod
 from datetime import datetime, date, timedelta
 import io
 import db  # camada de acesso ao Supabase
@@ -227,6 +228,86 @@ def save_users(df):
 
 def get_opcoes(df_conf, tabela):
     return db.get_opcoes(df_conf, tabela)
+
+
+def gerar_html_impressao(df_rows: pd.DataFrame) -> str:
+    def esc(v):
+        return html_mod.escape(str(v or "—"))
+
+    linhas = []
+    for i, (_, row) in enumerate(df_rows.iterrows()):
+        acoes = str(row.get("Acoes_Imediatas", "") or "").strip()
+        bloco_acoes = (
+            f'<div class="campo"><div class="lbl">Ações Imediatas</div>{esc(acoes)}</div>'
+            if acoes and acoes.lower() != "nan" else ""
+        )
+        linhas.append(f"""
+        <div class="notificacao">
+          <div class="notif-header">
+            <span class="n">#{i+1}</span>
+            {esc(row.get("Categoria_Incidente","—"))} &nbsp;·&nbsp;
+            {esc(row.get("Gravidade","—"))} &nbsp;·&nbsp;
+            Status: <strong>{esc(row.get("Status","—"))}</strong>
+          </div>
+          <table>
+            <tr>
+              <td><div class="lbl">Data do Incidente</div>{str(row.get("Data_Incidente",""))[:10]}</td>
+              <td><div class="lbl">Turno</div>{esc(row.get("Turno","—"))}</td>
+              <td><div class="lbl">Setor / Leito</div>{esc(row.get("Setor","—"))} / {esc(row.get("Leito","—"))}</td>
+              <td><div class="lbl">Tipo</div>{esc(row.get("Tipo_Geral","—"))}</td>
+            </tr>
+            <tr>
+              <td><div class="lbl">Paciente</div>{esc(row.get("Nome_Paciente","") or "Não informado")}</td>
+              <td><div class="lbl">Nasc. / Idade</div>{str(row.get("Data_Nascimento",""))[:10]}</td>
+              <td><div class="lbl">Raça / Cor</div>{esc(row.get("Raca_Cor","") or "—")}</td>
+              <td><div class="lbl">Relator / Função</div>{esc(row.get("Relator","") or "Anônimo")} — {esc(row.get("Funcao_Relator","") or "—")}</td>
+            </tr>
+          </table>
+          <div class="campo"><div class="lbl">Fatores Causadores</div>{esc(row.get("Fatores_Causadores","") or "—")}</div>
+          <div class="campo"><div class="lbl">Descrição do Incidente</div>{esc(row.get("Descricao","") or "—")}</div>
+          {bloco_acoes}
+          <div class="rodape">
+            Registrado em: {str(row.get("Data_Registro",""))[:16]} &nbsp;|&nbsp;
+            Relato: {str(row.get("Data_Relato",""))[:10]} {str(row.get("Hora_Relato",""))[:5]}
+          </div>
+        </div>""")
+
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Notificações — HGMF</title>
+<style>
+  @media print {{ @page {{ margin:1.5cm; size:A4; }} }}
+  * {{ box-sizing:border-box; margin:0; padding:0; }}
+  body {{ font-family:Arial,sans-serif; font-size:11px; color:#222; background:#fff; padding:24px; }}
+  .topo {{ text-align:center; border-bottom:3px solid #0d47a1; margin-bottom:24px; padding-bottom:12px; }}
+  .topo h2 {{ color:#0d47a1; font-size:16px; }}
+  .topo p {{ color:#555; font-size:11px; margin-top:4px; }}
+  .notificacao {{ page-break-inside:avoid; border:1px solid #c8d8f0; border-radius:6px; padding:14px; margin-bottom:20px; }}
+  .notif-header {{ background:#e8f0fe; padding:8px 12px; border-radius:4px; margin-bottom:10px; font-size:12px; font-weight:600; color:#0d47a1; }}
+  .n {{ font-size:13px; margin-right:8px; }}
+  table {{ width:100%; border-collapse:collapse; margin:8px 0; }}
+  td {{ padding:5px 8px; border:1px solid #dde; vertical-align:top; width:25%; }}
+  .lbl {{ font-size:8.5px; text-transform:uppercase; color:#666; font-weight:700; margin-bottom:2px; }}
+  .campo {{ padding:8px; background:#f8f9fc; border-radius:4px; margin:6px 0; line-height:1.5; }}
+  .rodape {{ font-size:9px; color:#888; margin-top:10px; border-top:1px solid #eee; padding-top:6px; }}
+  .print-btn {{ position:fixed; top:16px; right:16px; background:#0d47a1; color:#fff; border:none;
+                padding:10px 20px; border-radius:6px; cursor:pointer; font-size:13px; z-index:999; }}
+  @media print {{ .print-btn {{ display:none; }} }}
+</style>
+</head>
+<body>
+<button class="print-btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+<div class="topo">
+  <h2>Hospital Geral Menandro de Faria</h2>
+  <p>Núcleo de Segurança do Paciente — Notificações de Incidente</p>
+  <p style="margin-top:4px;font-size:10px;color:#888;">Gerado em {datetime.now().strftime("%d/%m/%Y às %H:%M")}</p>
+</div>
+{"".join(linhas)}
+</body>
+</html>"""
+
 
 # ─── Session state ────────────────────────────────────────────────────────────
 for k, v in {
@@ -532,10 +613,35 @@ elif menu == "📋 Notificações":
     if f_grav != "Todas":
         df_view = df_view[df_view["Gravidade"] == f_grav]
 
-    st.markdown(f"**{len(df_view)}** notificações encontradas")
+    df_sorted_view = df_view.sort_values("Data_Registro", ascending=False).reset_index(drop=True)
+
+    # Seleção para impressão
+    notif_opts = {
+        f"#{i+1} — {r.get('Categoria_Incidente','—')} — {str(r.get('Data_Incidente',''))[:10]} — {r.get('Setor','—')}": i
+        for i, (_, r) in enumerate(df_sorted_view.iterrows())
+    }
+    _pc1, _pc2 = st.columns([2, 3])
+    with _pc1:
+        st.markdown(f"**{len(df_sorted_view)}** notificações encontradas")
+    with _pc2:
+        sel_labels = st.multiselect(
+            "Imprimir", list(notif_opts.keys()),
+            label_visibility="collapsed",
+            placeholder="Selecionar notificações para imprimir..."
+        )
+    if sel_labels:
+        df_para_imp = df_sorted_view.iloc[[notif_opts[l] for l in sel_labels]]
+        st.download_button(
+            f"🖨️ Baixar para imprimir ({len(sel_labels)})",
+            data=gerar_html_impressao(df_para_imp),
+            file_name=f"notificacoes_hgmf_{date.today()}.html",
+            mime="text/html",
+            type="primary",
+            use_container_width=True
+        )
     st.markdown("---")
 
-    for idx, row in df_view.sort_values("Data_Registro", ascending=False).iterrows():
+    for idx, row in df_sorted_view.iterrows():
         cor = _cor_gravidade(str(row.get("Gravidade", "")))
         status_val = str(row.get("Status", "Novo"))
         badge_class = {
@@ -715,6 +821,11 @@ elif menu == "📋 Notificações":
                         except Exception as e:
                             st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar status: {e}"}
                         st.rerun()
+
+        st.markdown(
+            '<div style="border-top:3px solid #dbe4f0;margin:20px 0 8px 0;border-radius:2px;"></div>',
+            unsafe_allow_html=True
+        )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: RELATÓRIOS
