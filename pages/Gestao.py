@@ -1,3 +1,22 @@
+"""
+Gestao.py — Painel de Gestão do sistema de incidentes HGMF
+
+Página protegida por login destinada à equipe do Núcleo de Segurança do Paciente.
+Funcionalidades disponíveis conforme permissão do usuário:
+
+  📊 Dashboard        — indicadores e gráficos do período
+  📋 Notificações     — lista, detalhe, edição, registros de ação e status
+  📈 Relatórios       — análises temáticas (LPP, quedas, medicamentos, etc.)
+  📁 Exportar Dados   — download em Excel do período filtrado
+  ⚙️ Configurar Menus — gerenciar opções dos selectboxes e campos obrigatórios
+  👥 Usuários         — criar, editar permissões e remover usuários
+
+Sistema de permissões:
+  - Menus: controlam quais abas o usuário vê na navegação
+  - CAP_EDITAR    (cap_editar_notificacoes):  exibe botão de edição de registros
+  - CAP_REGISTROS (cap_registros_equipe):     exibe registros de ação e alterar status
+"""
+
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -154,18 +173,48 @@ PRESET_PERMISSIONS = {
 }
 
 def parse_permissions(value):
+    """
+    Converte o campo Permissao (string) em lista de permissões individuais.
+
+    Aceita:
+      - Strings predefinidas ("Acesso Total", etc.) → expande via PRESET_PERMISSIONS
+      - Strings semicolon-separated ("Dashboard;Notificações;cap_editar_notificacoes")
+      - Qualquer outro valor → lista vazia
+
+    Retorna lista de strings com menus e/ou capacidades especiais.
+    """
     if value in PRESET_PERMISSIONS:
         return PRESET_PERMISSIONS[value]
     if isinstance(value, str):
         return [item.strip() for item in value.split(";") if item.strip()]
     return []
 
+
 def permissions_to_string(selected):
+    """
+    Converte uma lista de permissões de volta para string armazenável no banco.
+
+    Se a lista contiver todos os menus E todas as capacidades especiais,
+    retorna a string compacta "Acesso Total". Caso contrário, junta com ";".
+
+    Parâmetros:
+      selected — lista de strings com menus e/ou capacidades
+    """
     if set(selected) == set(MENU_LABELS + [CAP_EDITAR, CAP_REGISTROS]):
         return "Acesso Total"
     return ";".join(selected)
 
+
 def has_perm(perm_str, capability):
+    """
+    Verifica se uma string de permissão contém uma capacidade específica.
+
+    Parâmetros:
+      perm_str   — string armazenada no banco (ex: "Acesso Total" ou "Dashboard;cap_editar_notificacoes")
+      capability — constante a verificar (ex: CAP_EDITAR, CAP_REGISTROS)
+
+    Retorna True se a capacidade estiver presente, False caso contrário.
+    """
     return capability in parse_permissions(perm_str)
 
 CAMPO_LABELS = {
@@ -203,10 +252,19 @@ GRAVIDADE_CORES = {
 }
 
 def _cor_gravidade(g: str) -> str:
+    """
+    Retorna a classe CSS correspondente ao nível de gravidade do incidente.
+    Usada para colorir a borda esquerda dos cards de notificação.
+
+    Parâmetros:
+      g — string de gravidade (ex: "Dano Grave (lesão grave/permanente)")
+
+    Retorna uma das classes: "near", "semDano", "leve", "moderado", "grave"
+    """
     for k, v in GRAVIDADE_CORES.items():
         if k.lower() in str(g).lower():
             return v
-    return "semDano"
+    return "semDano"  # padrão verde quando a gravidade não é reconhecida
 
 # ─── Funções delegadas ao módulo db ──────────────────────────────────────────
 hash_senha  = db.hash_senha
@@ -215,23 +273,44 @@ load_config = db.load_config
 load_users  = db.load_users
 
 def save_data(df):
-    """Não mais usado como dump completo. Alterações pontuais usam db.update_incidente."""
+    """Stub de compatibilidade — não usado. Alterações pontuais usam db.update_incidente()."""
     pass
+
 
 def save_config(df):
-    """Compatibilidade: re-salva alterações via db (chamado nos pontos de edição abaixo)."""
+    """Stub de compatibilidade — não usado. Alterações usam db.save_config_opcao()."""
     pass
+
 
 def save_users(df):
-    """Compatibilidade: re-salva via db (chamado nos pontos de edição abaixo)."""
+    """Stub de compatibilidade — não usado. Alterações usam db.update_user()."""
     pass
 
+
 def get_opcoes(df_conf, tabela):
+    """Wrapper local para db.get_opcoes — retorna opções ativas de um menu de configuração."""
     return db.get_opcoes(df_conf, tabela)
 
 
 def gerar_html_impressao(df_rows: pd.DataFrame) -> str:
+    """
+    Gera um documento HTML formatado para impressão/PDF de uma ou mais notificações.
+
+    O HTML inclui:
+      - Cabeçalho com nome do hospital e data de geração
+      - Uma seção por notificação com todos os campos relevantes
+      - CSS de impressão (A4, page-break-inside:avoid)
+      - Botão fixo "Imprimir / Salvar PDF" que aciona window.print()
+
+    Todos os valores são escapados via html.escape() para evitar XSS.
+
+    Parâmetros:
+      df_rows — DataFrame com uma ou mais linhas de incidentes
+
+    Retorna string HTML pronta para download ou exibição.
+    """
     def esc(v):
+        """Escapa caracteres HTML especiais para evitar XSS no documento gerado."""
         return html_mod.escape(str(v or "—"))
 
     linhas = []
@@ -310,6 +389,13 @@ def gerar_html_impressao(df_rows: pd.DataFrame) -> str:
 
 
 # ─── Session state ────────────────────────────────────────────────────────────
+# Inicializa as chaves de sessão apenas se ainda não existirem.
+# Isso preserva os valores entre reruns sem sobrescrever o estado atual.
+#   logado       — True quando o usuário completou o login com sucesso
+#   user         — nome de usuário logado
+#   permissao    — string de permissão armazenada no banco
+#   tentativas   — contador de tentativas de login falhas (proteção brute-force)
+#   bloqueado_ate — datetime até quando o login está bloqueado (None = desbloqueado)
 for k, v in {
     "logado": False, "user": "", "permissao": "",
     "tentativas": 0, "bloqueado_ate": None
@@ -318,6 +404,12 @@ for k, v in {
         st.session_state[k] = v
 
 # ─── TELA DE LOGIN ────────────────────────────────────────────────────────────
+# Exibida enquanto o usuário não estiver autenticado.
+# Fluxo de autenticação:
+#   1. Verifica se o login está bloqueado por excesso de tentativas
+#   2. Tenta login mestre (admin_master) via hash lido dos Secrets
+#   3. Tenta login normal consultando a tabela de usuários no Supabase
+#   4. Após 5 tentativas falhas, bloqueia por 5 minutos (armazenado na sessão)
 if not st.session_state["logado"]:
     st.markdown("""
     <div style="max-width:400px; margin:60px auto 0 auto;">
@@ -377,7 +469,10 @@ if not st.session_state["logado"]:
     st.stop()
 
 # ─── PAINEL AUTENTICADO ───────────────────────────────────────────────────────
-df_dados    = load_data()
+# A partir daqui o usuário está logado.
+# Carrega os dados necessários para todas as abas do painel.
+# O banner de notificação (sucesso/erro) é exibido no topo antes de qualquer aba.
+df_dados    = load_data()   # todos os incidentes registrados
 df_config   = load_config()
 df_usuarios = load_users()
 
@@ -434,6 +529,10 @@ with _nc_sair:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: DASHBOARD
+# Exibe indicadores agregados e gráficos para o período selecionado.
+# Permite filtrar por data, setor e exibe KPIs + 6 gráficos Altair:
+#   - Gravidade (donut), Categoria (barras), Evolução temporal (linha),
+#     Setor (barras), Turno (barras), Fatores causadores (barras)
 # ══════════════════════════════════════════════════════════════════════════════
 if menu == "📊 Dashboard":
     st.title("📊 Dashboard de Indicadores")
@@ -577,7 +676,14 @@ if menu == "📊 Dashboard":
             col_k.metric(status_n, qtd)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ABA: NOTIFICAÇÕES (lista e gerenciamento)
+# ABA: NOTIFICAÇÕES
+# Lista todas as notificações com filtros por status, categoria, setor e gravidade.
+# Cada notificação exibe um card resumido e um expander com:
+#   - Dados completos do evento e paciente
+#   - Botão de impressão individual (gera HTML/PDF para download)
+#   - Formulário de edição (se CAP_EDITAR)
+#   - Registros de ação da equipe de segurança (se CAP_REGISTROS)
+#   - Alteração de status (se CAP_REGISTROS)
 # ══════════════════════════════════════════════════════════════════════════════
 elif menu == "📋 Notificações":
     st.title("📋 Gerenciamento de Notificações")
@@ -615,30 +721,7 @@ elif menu == "📋 Notificações":
 
     df_sorted_view = df_view.sort_values("Data_Registro", ascending=False).reset_index(drop=True)
 
-    # Seleção para impressão
-    notif_opts = {
-        f"#{i+1} — {r.get('Categoria_Incidente','—')} — {str(r.get('Data_Incidente',''))[:10]} — {r.get('Setor','—')}": i
-        for i, (_, r) in enumerate(df_sorted_view.iterrows())
-    }
-    _pc1, _pc2 = st.columns([2, 3])
-    with _pc1:
-        st.markdown(f"**{len(df_sorted_view)}** notificações encontradas")
-    with _pc2:
-        sel_labels = st.multiselect(
-            "Imprimir", list(notif_opts.keys()),
-            label_visibility="collapsed",
-            placeholder="Selecionar notificações para imprimir..."
-        )
-    if sel_labels:
-        df_para_imp = df_sorted_view.iloc[[notif_opts[l] for l in sel_labels]]
-        st.download_button(
-            f"🖨️ Baixar para imprimir ({len(sel_labels)})",
-            data=gerar_html_impressao(df_para_imp),
-            file_name=f"notificacoes_hgmf_{date.today()}.html",
-            mime="text/html",
-            type="primary",
-            use_container_width=True
-        )
+    st.markdown(f"**{len(df_sorted_view)}** notificações encontradas")
     st.markdown("---")
 
     for idx, row in df_sorted_view.iterrows():
@@ -711,6 +794,17 @@ elif menu == "📋 Notificações":
             if sug_val and sug_val.lower() != "nan":
                 st.markdown("**Sugestão de Melhoria**")
                 st.warning(sug_val)
+
+            # Botão de impressão: gera HTML formatado para esta notificação e oferece download
+            st.markdown("---")
+            st.download_button(
+                "🖨️ Gerar PDF desta notificação",
+                data=gerar_html_impressao(pd.DataFrame([row.to_dict()])),
+                file_name=f"notificacao_{row.get('id','nd')}_{date.today()}.html",
+                mime="text/html",
+                key=f"print_{idx}",
+                use_container_width=True
+            )
 
             # Edição disponível para usuários com permissão Editar Notificações
             if has_perm(perm, CAP_EDITAR):
@@ -829,6 +923,10 @@ elif menu == "📋 Notificações":
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: RELATÓRIOS
+# Relatórios temáticos pré-configurados — o usuário seleciona o tipo e
+# o sistema filtra e exibe tabelas + gráficos específicos. Tipos disponíveis:
+#   Resumo Mensal, Ranking Setores, Near Miss, Dano Grave, Pendências,
+#   LPP, Quedas, Medicamentos, Sugestões de Melhoria
 # ══════════════════════════════════════════════════════════════════════════════
 elif menu == "📈 Relatórios":
     st.title("📈 Relatórios Gerenciais")
@@ -954,6 +1052,8 @@ elif menu == "📈 Relatórios":
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: EXPORTAR DADOS
+# Permite baixar a base de incidentes filtrada por período em formato Excel (.xlsx).
+# Usa openpyxl via pandas ExcelWriter. Exibe pré-visualização dos primeiros 50 registros.
 # ══════════════════════════════════════════════════════════════════════════════
 elif menu == "📁 Exportar Dados":
     st.title("📁 Exportar Base de Dados")
@@ -997,6 +1097,10 @@ elif menu == "📁 Exportar Dados":
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: CONFIGURAR MENUS
+# Duas funcionalidades nesta aba:
+#   1. Editar opções dos selectboxes do formulário (turnos, setores, categorias, etc.)
+#      — tabela editável com opção de ativar/desativar/excluir itens e adicionar novos
+#   2. Campos Obrigatórios — marcar quais campos do formulário exibem * e são validados
 # ══════════════════════════════════════════════════════════════════════════════
 elif menu == "⚙️ Configurar Menus":
     st.title("⚙️ Configuração de Menus e Opções")
@@ -1111,6 +1215,13 @@ elif menu == "⚙️ Configurar Menus":
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: USUÁRIOS
+# Gerenciamento completo de usuários do painel de gestão:
+#   - Listar usuários cadastrados com permissão e status
+#   - Editar menus autorizados e permissões especiais (CAP_EDITAR, CAP_REGISTROS)
+#   - Ativar/desativar conta
+#   - Remover usuário (exceto o próprio usuário logado e o "admin")
+#   - Redefinir senha de qualquer usuário
+#   - Criar novo usuário com login, senha e permissões configuráveis
 # ══════════════════════════════════════════════════════════════════════════════
 elif menu == "👥 Usuários":
     st.title("👥 Gerenciamento de Usuários")

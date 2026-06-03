@@ -1,5 +1,20 @@
+"""
+app.py — Formulário público de notificação de incidentes — HGMF
+
+Esta é a página principal do sistema, acessível sem login.
+Permite que qualquer profissional do hospital registre um incidente
+de forma sigilosa, preenchendo dados do evento, paciente e relato.
+
+Fluxo:
+  1. Carrega configurações de menus (opções de selectbox) do Supabase
+  2. Carrega flags de obrigatoriedade dos campos
+  3. Exibe o formulário de notificação
+  4. Ao enviar, valida campos obrigatórios e salva no banco
+  5. Script JS injeta cálculo de idade em tempo real via polling DOM
+"""
+
 import streamlit as st
-import streamlit.components.v1 as components
+import streamlit.components.v1 as components  # necessário para injetar JS no DOM
 import pandas as pd
 import os
 import base64
@@ -7,13 +22,17 @@ from datetime import datetime, date
 import db  # camada de acesso ao Supabase
 from version import __version__
 
+# ─── Configuração da página ───────────────────────────────────────────────────
+# layout="centered" limita a largura para melhor legibilidade do formulário
 st.set_page_config(
     page_title="Notificação de Incidente - HGMF",
     page_icon="🏥",
     layout="centered"
 )
 
-# ─── CSS: oculta controles do Streamlit e aplica identidade visual ───────────
+# ─── CSS global ───────────────────────────────────────────────────────────────
+# Oculta elementos padrão do Streamlit (sidebar, header, footer, deploy button)
+# e aplica identidade visual do HGMF (fonte Inter, cores azuis, cards, badges)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -28,8 +47,10 @@ footer                             {display:none !important;}
 
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
+/* Largura máxima do conteúdo — melhor para formulários em tela cheia */
 .block-container { padding-top: 1.5rem !important; max-width: 780px; }
 
+/* Cabeçalho com gradiente azul do hospital */
 .cabecalho {
     background: linear-gradient(135deg, #0d47a1 0%, #1565c0 60%, #1976d2 100%);
     border-radius: 16px;
@@ -41,6 +62,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .cabecalho h1 { color: #fff; font-size: 1.45rem; font-weight: 700; margin:0 0 4px 0; letter-spacing:-0.3px; }
 .cabecalho p  { color: #bbdefb; font-size: 0.88rem; margin:0; }
 
+/* Banner de sigilo exibido abaixo do cabeçalho */
 .aviso-sigilo {
     background: #e3f2fd;
     border-left: 4px solid #1976d2;
@@ -52,6 +74,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     font-weight: 500;
 }
 
+/* Títulos de seção dentro do formulário (ex: "Dados do Evento") */
 .secao-titulo {
     font-size: 0.78rem;
     font-weight: 700;
@@ -63,6 +86,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     border-bottom: 2px solid #e3f2fd;
 }
 
+/* Botão de envio do formulário — estilo primário azul */
 div[data-testid="stFormSubmitButton"] > button {
     background: linear-gradient(135deg, #0d47a1, #1976d2) !important;
     color: white !important;
@@ -80,6 +104,7 @@ div[data-testid="stFormSubmitButton"] > button:hover {
     box-shadow: 0 6px 20px rgba(13,71,161,0.4) !important;
 }
 
+/* Tamanho de fonte uniforme para labels dos campos */
 div[data-testid="stRadio"] > label          { font-size: 0.9rem; }
 div[data-testid="stSelectbox"] > label      { font-size: 0.9rem; font-weight:500; }
 div[data-testid="stTextInput"] > label      { font-size: 0.9rem; font-weight:500; }
@@ -91,14 +116,21 @@ div[data-testid="stCheckbox"] > label       { font-size: 0.88rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Funções delegadas ao módulo db ──────────────────────────────────────────
+# ─── Aliases para funções do módulo db ───────────────────────────────────────
+# Mantém o código do formulário mais legível sem prefixo "db."
 load_data   = db.load_data
 load_config = db.load_config
+# getattr com fallback caso a função não exista em versões antigas do módulo
 load_field_flags = getattr(db, "load_field_flags", lambda: pd.DataFrame())
 
+
 def get_opcoes(df_conf, tabela):
+    """Retorna lista de opções ativas de um menu de configuração."""
     return db.get_opcoes(df_conf, tabela)
 
+
+# ─── Ordem canônica de gravidade para o select_slider ────────────────────────
+# Define a sequência lógica de crescente para decrescente do nível de dano
 GRAVIDADE_ORDEM = [
     "Near Miss (Quase Evento - não atingiu o paciente)",
     "Sem Dano (atingiu, sem lesão)",
@@ -108,14 +140,19 @@ GRAVIDADE_ORDEM = [
     "Óbito",
 ]
 
+
 def ordenar_gravidade(opcoes):
+    """
+    Ordena as opções de gravidade conforme a sequência clínica definida em GRAVIDADE_ORDEM.
+    Opções não reconhecidas são colocadas ao final.
+    """
     ordem = {valor: indice for indice, valor in enumerate(GRAVIDADE_ORDEM)}
     return sorted(opcoes, key=lambda x: ordem.get(x, len(opcoes)))
 
-# ─── Cabeçalho ────────────────────────────────────────────────────────────────
-# Procura `logo.png` primeiro no diretório do script (repositório),
-# depois no diretório de trabalho atual. Isso evita problemas quando o
-# app é executado por deploys que alteram o cwd.
+
+# ─── Cabeçalho com logo ───────────────────────────────────────────────────────
+# Tenta carregar o logo.png do diretório do script; se não encontrar, exibe
+# apenas texto. Isso evita erros em ambientes de deploy que alteram o cwd.
 logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
 if not os.path.exists(logo_path):
     logo_path = "logo.png"
@@ -134,7 +171,7 @@ if os.path.exists(logo_path):
         </div>
         """, unsafe_allow_html=True)
     except Exception:
-        # fallback para exibição sem imagem
+        # Fallback sem imagem caso a leitura do arquivo falhe
         st.markdown("""
         <div class="cabecalho">
             <h1>🏥 Hospital Geral Menandro de Faria</h1>
@@ -149,6 +186,7 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
+# Banner de sigilo e versão do sistema
 st.markdown(f"""
 <div class="aviso-sigilo">
     🔒 <strong>Notificação sigilosa, a identificação do notificador é opcional.</strong>
@@ -156,36 +194,53 @@ st.markdown(f"""
 <div style="text-align: right; font-size: 0.75rem; color: #999; margin-bottom: 12px;">v{__version__}</div>
 """, unsafe_allow_html=True)
 
-df_config = load_config()
-df_dados  = load_data()
+# ─── Carregamento de dados de configuração ────────────────────────────────────
+# Carregado fora do formulário para não recarregar a cada interação interna
+df_config = load_config()   # opções dos selectboxes (turnos, setores, categorias, etc.)
+df_dados  = load_data()     # incidentes já registrados (usado apenas como referência)
 
+# Carrega flags de obrigatoriedade — define quais campos são marcados com *
 try:
     fflags = load_field_flags()
 except Exception:
-    fflags = pd.DataFrame()
+    fflags = pd.DataFrame()  # fallback vazio se tabela não existir
+
 
 def label(campo, texto):
+    """
+    Retorna o texto do label com asterisco (*) se o campo estiver marcado
+    como obrigatório na tabela config_campos. Caso contrário, retorna o texto puro.
+
+    Parâmetros:
+      campo — nome interno do campo (ex: "Descricao", "Setor")
+      texto — texto a ser exibido ao usuário
+    """
     try:
         req = bool(fflags[fflags["Campo"] == campo]["Obrigatorio"].iloc[0])
     except Exception:
         req = False
     return texto + (" *" if req else "")
 
+
+# ─── Formulário principal de notificação ─────────────────────────────────────
+# clear_on_submit=True limpa automaticamente todos os campos após envio bem-sucedido
 with st.form("form_notificacao", clear_on_submit=True):
 
     # ── BLOCO 1: Dados do Evento ──────────────────────────────────────────────
+    # Informações sobre quando e onde o incidente ocorreu
     st.markdown('<div class="secao-titulo">📅 Dados do Evento</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([2, 2, 2])
     with c1:
         data_incidente = st.date_input(
             label("Data_Incidente", "Data do Incidente"),
             value=date.today(),
-            max_value=date.today(),
+            max_value=date.today(),  # impede datas futuras
             format="DD/MM/YYYY"
         )
     with c2:
         turno = st.selectbox(label("Turno", "Hora/Turno do Incidente"), get_opcoes(df_config, "Turno"))
     with c3:
+        # Data do registro é gerada automaticamente — campo apenas leitura
         st.date_input(
             label("Data_Registro", "Data do Registro"),
             value=date.today(),
@@ -199,6 +254,8 @@ with st.form("form_notificacao", clear_on_submit=True):
     with c5:
         cama = st.text_input(label("Leito", "Leito"), placeholder="Ex: 12A")
 
+    # ── BLOCO 2: Dados do Relato e do Paciente ────────────────────────────────
+    # Identifica quando o relato foi feito e dados básicos do paciente envolvido
     st.markdown('<div class="secao-titulo">📝 Dados do Relato / Paciente</div>', unsafe_allow_html=True)
     r1, r2, r3 = st.columns([1.5, 1.5, 4])
     with r1:
@@ -214,6 +271,7 @@ with st.form("form_notificacao", clear_on_submit=True):
 
     s1, s2, s3 = st.columns([2, 1, 2])
     with s1:
+        # value=None exibe o campo vazio — a idade só é calculada quando preenchido
         data_nasc = st.date_input(
             label("Data_Nascimento", "Data de Nascimento do Paciente"),
             value=None,
@@ -222,6 +280,8 @@ with st.form("form_notificacao", clear_on_submit=True):
             format="DD/MM/YYYY"
         )
     with s2:
+        # Cálculo de idade baseado na data de nascimento selecionada
+        # O campo é desabilitado (somente leitura) — atualizado também via JS externo
         if data_nasc:
             hoje = date.today()
             idade = hoje.year - data_nasc.year - ((hoje.month, hoje.day) < (data_nasc.month, data_nasc.day))
@@ -235,7 +295,8 @@ with st.form("form_notificacao", clear_on_submit=True):
             ["Não informado", "Branca", "Preta", "Parda", "Amarela", "Indígena"]
         )
 
-    # ── BLOCO 2: Tipo do Incidente ────────────────────────────────────────────
+    # ── BLOCO 3: Tipo do Incidente ────────────────────────────────────────────
+    # Classifica o incidente por tipo, categoria e subcategoria
     st.markdown('<div class="secao-titulo">📋 Tipo do Incidente</div>', unsafe_allow_html=True)
     tipo_geral = st.radio(
         label("Tipo_Geral", "Natureza do incidente"),
@@ -245,7 +306,7 @@ with st.form("form_notificacao", clear_on_submit=True):
 
     categoria = st.selectbox(label("Categoria_Incidente", "Categoria do Incidente"), get_opcoes(df_config, "Categoria"))
 
-    # Subcategorias dinâmicas conforme categoria
+    # Subcategorias e campos adicionais aparecem dinamicamente conforme a categoria
     subcategoria = ""
     medicamento  = ""
 
@@ -256,7 +317,6 @@ with st.form("form_notificacao", clear_on_submit=True):
 
     elif categoria == "Queda do Paciente":
         subcategoria = st.selectbox("Tipo de Queda", get_opcoes(df_config, "Subcategoria_Queda"))
-        # Removido lembrete solicitado pelo usuário
 
     elif categoria == "Falha na Segurança Medicamentosa":
         subcategoria = st.selectbox("Tipo de Falha Medicamentosa", get_opcoes(df_config, "Subcategoria_Med"))
@@ -268,14 +328,14 @@ with st.form("form_notificacao", clear_on_submit=True):
         placeholder="Relate os fatos de forma objetiva. Ex: Paciente em pós-op imediato foi encontrado no chão ao lado do leito às 14h30..."
     )
 
-    # ── BLOCO 3: Gravidade e Dano ─────────────────────────────────────────────
+    # ── BLOCO 4: Gravidade e Dano ─────────────────────────────────────────────
+    # Escala de severidade do dano causado ao paciente
     st.markdown('<div class="secao-titulo">⚠️ Gravidade e Dano</div>', unsafe_allow_html=True)
     gravidade_ops = ordenar_gravidade(get_opcoes(df_config, "Gravidade"))
     gravidade = st.select_slider(label("Gravidade", "Nível de Gravidade / Classificação do Dano"), options=gravidade_ops)
 
-    # Observação: campo de dano e caixas de comunicação removidos conforme solicitado
-
-    # ── BLOCO 4: Fatores e Descrição ──────────────────────────────────────────
+    # ── BLOCO 5: Fatores Causadores ───────────────────────────────────────────
+    # Permite selecionar múltiplos fatores que contribuíram para o incidente
     st.markdown('<div class="secao-titulo">🔍 Fatores Causadores</div>', unsafe_allow_html=True)
     fatores = st.multiselect(
         label("Fatores_Causadores", "Fatores que contribuíram para o incidente (selecione todos os itens aplicáveis)"),
@@ -288,7 +348,8 @@ with st.form("form_notificacao", clear_on_submit=True):
         placeholder="Ex: Comunicado ao médico, feita gestão da lesão…"
     )
 
-    # ── BLOCO 5: Identificação Opcional ──────────────────────────────────────
+    # ── BLOCO 6: Identificação Opcional do Relator ────────────────────────────
+    # Dados do profissional que está notificando — totalmente opcional
     st.markdown('<div class="secao-titulo">👤 Sua Identificação</div>', unsafe_allow_html=True)
     st.caption("Sua identidade nunca será vinculada ao relato de forma pública. É opcional e serve apenas para contato em caso de dúvida pelo Núcleo.")
     c9, c10 = st.columns(2)
@@ -300,12 +361,16 @@ with st.form("form_notificacao", clear_on_submit=True):
     st.markdown("---")
     enviar = st.form_submit_button("📤 Enviar Notificação ao Núcleo de Segurança", use_container_width=True)
 
+    # ── Lógica de envio ───────────────────────────────────────────────────────
     if enviar:
+        # Lê quais campos estão marcados como obrigatórios no banco
         missing = []
         try:
             reqs = {row['Campo']: bool(row['Obrigatorio']) for _, row in fflags.iterrows()}
         except Exception:
             reqs = {}
+
+        # Verifica cada campo obrigatório — adiciona ao lista de faltantes se vazio
         for campo, label_txt, vazio in [
             ('Leito',              'Leito',              lambda: not cama.strip()),
             ('Nome_Paciente',      'Nome do Paciente',   lambda: not nome_paciente.strip()),
@@ -324,39 +389,47 @@ with st.form("form_notificacao", clear_on_submit=True):
         if missing:
             st.warning(f"⚠️ Preencha os campos obrigatórios: {', '.join(missing)}")
         elif not reqs.get('Descricao', False) and not descricao.strip():
+            # Descrição sempre exigida mesmo sem flag — é o campo central do relato
             st.warning("⚠️ Por favor, descreva o incidente antes de enviar.")
         else:
+            # Monta o dicionário com todos os campos para inserção no banco
+            # Campos de data usam str(x) if x else None para evitar inserir "None" como string
             novo = {
-                "Data_Registro":            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "Data_Incidente":           str(data_incidente),
-                "Turno":                    turno,
-                "Setor":                    setor,
-                "Leito":                    cama,
-                "Tipo_Geral":               tipo_geral,
-                "Categoria_Incidente":      categoria,
-                "Subcategoria":             subcategoria,
-                "Medicamento_Envolvido":    medicamento,
-                "Gravidade":                gravidade,
-                "Data_Relato":              str(data_relato) if data_relato else None,
-                "Hora_Relato":              str(hora_relato) if hora_relato else None,
-                "Nome_Paciente":            nome_paciente,
-                "Data_Nascimento":          str(data_nasc) if data_nasc else None,
-                "Raca_Cor":                 raca_cor,
-                "Fatores_Causadores":       ", ".join(fatores),
-                "Descricao":               descricao,
-                "Acoes_Imediatas":          acoes_imediatas,
-                "Relator":                  relator,
-                "Funcao_Relator":           funcao,
-                "Status":                   "Novo"
+                "Data_Registro":         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Data_Incidente":        str(data_incidente),
+                "Turno":                 turno,
+                "Setor":                 setor,
+                "Leito":                 cama,
+                "Tipo_Geral":            tipo_geral,
+                "Categoria_Incidente":   categoria,
+                "Subcategoria":          subcategoria,
+                "Medicamento_Envolvido": medicamento,
+                "Gravidade":             gravidade,
+                "Data_Relato":           str(data_relato) if data_relato else None,
+                "Hora_Relato":           str(hora_relato) if hora_relato else None,
+                "Nome_Paciente":         nome_paciente,
+                "Data_Nascimento":       str(data_nasc) if data_nasc else None,
+                "Raca_Cor":              raca_cor,
+                "Fatores_Causadores":    ", ".join(fatores),
+                "Descricao":             descricao,
+                "Acoes_Imediatas":       acoes_imediatas,
+                "Relator":               relator,
+                "Funcao_Relator":        funcao,
+                "Status":                "Novo"
             }
             db.save_incidente(novo)
             st.success("✅ Notificação enviada com sucesso! Obrigado por contribuir com a segurança do nosso hospital.")
             st.balloons()
 
-# ── Calcula idade ao vivo via polling do campo Data de Nascimento ─────────────
+# ─── Cálculo de idade em tempo real (JavaScript) ─────────────────────────────
+# Injeta um script via iframe same-origin que faz polling a cada 300ms no DOM.
+# Detecta mudanças no campo "Data de Nascimento", calcula a idade em JS e
+# atualiza o campo "Idade" diretamente no DOM — sem rerun do Python.
+# Necessário porque widgets dentro de st.form não disparam reruns individualmente.
 components.html("""
 <script>
 (function(){
+  // Calcula a idade em anos a partir de uma data no formato DD/MM/YYYY
   function calcAge(s){
     var p=s.split('/');
     if(p.length!==3)return null;
@@ -367,24 +440,29 @@ components.html("""
     return(a>=0&&a<=130)?a:null;
   }
   var prevVal='',lastAge='—';
+  // Polling: verifica a cada 300ms se o valor do campo mudou
   setInterval(function(){
     try{
       var doc=window.parent.document;
       var nascEl=null,idadeEl=null;
+      // Localiza o input de data pelo texto do label ("Nascimento")
       doc.querySelectorAll('[data-testid="stDateInput"]').forEach(function(el){
         var l=el.querySelector('label');
         if(l&&l.textContent.indexOf('Nascimento')>=0)nascEl=el.querySelector('input');
       });
+      // Localiza o input de idade pelo texto exato do label
       doc.querySelectorAll('[data-testid="stTextInput"]').forEach(function(el){
         var l=el.querySelector('label');
         if(l&&l.textContent.trim()==='Idade')idadeEl=el.querySelector('input');
       });
       if(!nascEl||!idadeEl)return;
+      // Só recalcula se o valor mudou desde o último poll
       if(nascEl.value!==prevVal){
         prevVal=nascEl.value;
         var age=calcAge(prevVal);
         lastAge=age!==null?age+' anos':'—';
       }
+      // Reaplica o valor calculado (React pode sobrescrever após re-render)
       if(lastAge!=='—')idadeEl.value=lastAge;
     }catch(e){}
   },300);
