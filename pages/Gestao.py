@@ -1148,18 +1148,29 @@ elif menu == "⚙️ Configurar Menus":
         df_ed = df_f2.copy()
         df_ed["Excluir"] = False
 
-        # Configuração de colunas: Ordem só aparece (e é obrigatório) em Gravidade
+        # Para Gravidade: garante coluna Ordem no DataFrame mesmo antes do SQL migration
+        if tab_sel == "Gravidade":
+            if "Ordem" not in df_ed.columns:
+                df_ed["Ordem"] = 0
+            df_ed["Ordem"] = pd.to_numeric(df_ed["Ordem"], errors="coerce").fillna(0).astype(int)
+            # Reordena as colunas para Ordem aparecer logo após Opcao na tabela
+            cols = ["id", "Tabela", "Opcao", "Ordem", "Ativo", "Excluir"]
+            df_ed = df_ed.reindex(columns=[c for c in cols if c in df_ed.columns or c == "Excluir"], fill_value=0)
+            df_ed["Excluir"] = df_ed["Excluir"].fillna(False).astype(bool)
+
+        # Configuração de colunas: Ordem só aparece (obrigatório) em Gravidade
         col_config_ed = {
             "id":      None,
             "Tabela":  None,
+            "Opcao":   st.column_config.TextColumn("Opção", required=True),
             "Ativo":   st.column_config.CheckboxColumn("Ativo?"),
-            "Excluir": st.column_config.CheckboxColumn("✖"),
-            "Ordem":   None,  # oculto por padrão para outros menus
+            "Excluir": st.column_config.CheckboxColumn("✖ Excluir"),
+            "Ordem":   None,  # oculto para outros menus
         }
         if tab_sel == "Gravidade":
             col_config_ed["Ordem"] = st.column_config.NumberColumn(
                 "Ordem",
-                help="Posição na escala de gravidade (1 = menos grave, 6 = mais grave). Obrigatório.",
+                help="Posição na escala (1 = menos grave). Digite o número e clique em Salvar.",
                 min_value=1,
                 step=1,
                 required=True,
