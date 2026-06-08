@@ -230,49 +230,77 @@ def load_config_table(tabela: str) -> pd.DataFrame:
     """
     Carrega as opções de uma tabela de configuração específica do Supabase.
 
-    Se a tabela estiver vazia, insere os valores padrão definidos em DEFAULT_CONFIG_OPCOES.
-    Se a inserção falhar (ex: RLS bloqueado), usa os padrões apenas em memória.
+    Para "Gravidade": ordena pela coluna Ordem (definida pelo gestor) e inclui
+    essa coluna no DataFrame retornado, permitindo reordenação personalizada.
+    Para demais tabelas: ordena alfabeticamente por Opcao.
+
+    Se a tabela estiver vazia, insere os valores padrão (com Ordem automática
+    para Gravidade). Se a inserção falhar, usa os padrões apenas em memória.
 
     Parâmetros:
-      tabela — chave do dicionário CONFIG_TABLES (ex: "Turno", "Setor")
+      tabela — chave do dicionário CONFIG_TABLES (ex: "Turno", "Setor", "Gravidade")
 
-    Retorna DataFrame com colunas: id, Tabela, Opcao, Ativo
+    Retorna DataFrame com colunas: id, Tabela, Opcao, Ativo [, Ordem para Gravidade]
     """
     table_name = CONFIG_TABLES.get(tabela)
     if not table_name:
         return pd.DataFrame(columns=COLUNAS_CONFIG)
 
     sb = get_client()
+    # Gravidade ordena por Ordem (campo gerenciado pelo gestor); demais por Opcao
+    order_col = "Ordem" if tabela == "Gravidade" else "Opcao"
+
     try:
-        res = sb.table(table_name).select("*").order("Opcao").execute()
+        res = sb.table(table_name).select("*").order(order_col).execute()
         rows = res.data or []
     except Exception:
-        rows = []  # silencia erros de RLS ou tabela inexistente
+        # Coluna Ordem pode não existir ainda — tenta sem ordenação específica
+        try:
+            res = sb.table(table_name).select("*").order("Opcao").execute()
+            rows = res.data or []
+        except Exception:
+            rows = []
 
     # Se não há dados, tenta semear com os valores padrão
     if not rows:
         defaults = DEFAULT_CONFIG_OPCOES.get(tabela, [])
         if defaults:
             try:
-                sb.table(table_name).insert(
-                    [{"Opcao": opcao, "Ativo": True} for opcao in defaults]
-                ).execute()
-                res = sb.table(table_name).select("*").order("Opcao").execute()
+                if tabela == "Gravidade":
+                    inserts = [{"Opcao": op, "Ativo": True, "Ordem": i + 1}
+                               for i, op in enumerate(defaults)]
+                else:
+                    inserts = [{"Opcao": op, "Ativo": True} for op in defaults]
+                sb.table(table_name).insert(inserts).execute()
+                res = sb.table(table_name).select("*").order(order_col).execute()
                 rows = res.data or []
             except Exception:
-                # Fallback em memória caso o banco bloqueie a inserção
-                rows = [{"id": None, "Opcao": opcao, "Ativo": True} for opcao in defaults]
+                if tabela == "Gravidade":
+                    rows = [{"id": None, "Opcao": op, "Ativo": True, "Ordem": i + 1}
+                            for i, op in enumerate(defaults)]
+                else:
+                    rows = [{"id": None, "Opcao": op, "Ativo": True} for op in defaults]
 
-    df = _rows_to_df(rows, ["id", "Opcao", "Ativo"])
-    df["Tabela"] = tabela
-    return df[["id", "Tabela", "Opcao", "Ativo"]]
+    if tabela == "Gravidade":
+        df = _rows_to_df(rows, ["id", "Opcao", "Ativo", "Ordem"])
+        df["Tabela"] = tabela
+        df["Ordem"] = pd.to_numeric(df["Ordem"], errors="coerce").fillna(0).astype(int)
+        return df[["id", "Tabela", "Opcao", "Ativo", "Ordem"]]
+    else:
+        df = _rows_to_df(rows, ["id", "Opcao", "Ativo"])
+        df["Tabela"] = tabela
+        return df[["id", "Tabela", "Opcao", "Ativo"]]
 
 
 def load_config() -> pd.DataFrame:
     """
-    Carrega todas as tabelas de configuração e retorna um DataFrame unificado,
-    ordenado por Tabela e Opcao.
-    Usado para popular os selectboxes e outros campos de seleção do formulário.
+    Carrega todas as tabelas de configuração e retorna um DataFrame unificado.
+
+    Ordenação:
+      - Gravidade: ordenada pela coluna Ordem (sequência clínica definida pelo gestor)
+      - Demais tabelas: ordenadas alfabeticamente por Tabela + Opcao
+
+    O DataFrame pode conter a coluna Ordem (NaN para tabelas que não são Gravidade).
     """
     tables = []
     for tabela in CONFIG_TABLES:
@@ -280,24 +308,38 @@ def load_config() -> pd.DataFrame:
     if not tables:
         return pd.DataFrame(columns=COLUNAS_CONFIG)
     df = pd.concat(tables, ignore_index=True)
-    return df.sort_values(["Tabela", "Opcao"]).reset_index(drop=True)
+
+    # Preserva a ordenação por Ordem para Gravidade; demais por Tabela+Opcao
+    if "Ordem" in df.columns:
+        df_other = df[df["Tabela"] != "Gravidade"].sort_values(["Tabela", "Opcao"])
+        df_grav  = df[df["Tabela"] == "Gravidade"].sort_values("Ordem")
+        df = pd.concat([df_other, df_grav], ignore_index=True)
+    else:
+        df = df.sort_values(["Tabela", "Opcao"]).reset_index(drop=True)
+
+    return df.reset_index(drop=True)
 
 
-def save_config_opcao(row_id: int | str, tabela: str, opcao: str, ativo: bool) -> None:
+def save_config_opcao(row_id: int | str, tabela: str, opcao: str, ativo: bool,
+                      ordem: int | None = None) -> None:
     """
-    Atualiza o nome e o status (ativo/inativo) de uma opção de configuração existente.
+    Atualiza o nome, status e (para Gravidade) a Ordem de uma opção de configuração.
 
     Parâmetros:
       row_id — id da linha no banco
-      tabela — nome lógico da tabela (ex: "Turno")
+      tabela — nome lógico da tabela (ex: "Turno", "Gravidade")
       opcao  — novo texto da opção
       ativo  — se a opção deve aparecer nos menus (True = visível)
+      ordem  — posição na escala (somente para Gravidade; ignorado nas demais)
     """
     table_name = CONFIG_TABLES.get(tabela)
     if not table_name:
         raise ValueError(f"Tabela de configuração desconhecida: {tabela}")
     sb = get_client()
-    sb.table(table_name).update({"Opcao": opcao, "Ativo": ativo}).eq("id", row_id).execute()
+    data: dict = {"Opcao": opcao, "Ativo": ativo}
+    if tabela == "Gravidade" and ordem is not None:
+        data["Ordem"] = int(ordem)
+    sb.table(table_name).update(data).eq("id", row_id).execute()
 
 
 def delete_config_opcao(row_id: int | str, tabela: str) -> None:
@@ -315,19 +357,23 @@ def delete_config_opcao(row_id: int | str, tabela: str) -> None:
     sb.table(table_name).delete().eq("id", row_id).execute()
 
 
-def add_config_opcao(tabela: str, opcao: str) -> None:
+def add_config_opcao(tabela: str, opcao: str, ordem: int | None = None) -> None:
     """
     Insere uma nova opção em uma tabela de configuração, já marcada como ativa.
 
     Parâmetros:
-      tabela — nome lógico da tabela (ex: "Categoria")
+      tabela — nome lógico da tabela (ex: "Categoria", "Gravidade")
       opcao  — texto da nova opção a ser adicionada
+      ordem  — posição na escala (obrigatório para Gravidade; ignorado nas demais)
     """
     table_name = CONFIG_TABLES.get(tabela)
     if not table_name:
         raise ValueError(f"Tabela de configuração desconhecida: {tabela}")
     sb = get_client()
-    sb.table(table_name).insert({"Opcao": opcao, "Ativo": True}).execute()
+    data: dict = {"Opcao": opcao, "Ativo": True}
+    if tabela == "Gravidade" and ordem is not None:
+        data["Ordem"] = int(ordem)
+    sb.table(table_name).insert(data).execute()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

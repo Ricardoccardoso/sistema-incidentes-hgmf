@@ -331,7 +331,9 @@ with st.form("form_notificacao", clear_on_submit=True):
     # ── BLOCO 4: Gravidade e Dano ─────────────────────────────────────────────
     # Escala de severidade do dano causado ao paciente
     st.markdown('<div class="secao-titulo">⚠️ Gravidade e Dano</div>', unsafe_allow_html=True)
-    gravidade_ops = ordenar_gravidade(get_opcoes(df_config, "Gravidade"))
+    # A ordem das opções vem diretamente do banco (coluna Ordem da tabela config_gravidade)
+    # ordenar_gravidade() não é mais aplicada aqui para respeitar a sequência definida pelo gestor
+    gravidade_ops = get_opcoes(df_config, "Gravidade")
     gravidade = st.select_slider(label("Gravidade", "Nível de Gravidade / Classificação do Dano"), options=gravidade_ops)
 
     # ── BLOCO 5: Fatores Causadores ───────────────────────────────────────────

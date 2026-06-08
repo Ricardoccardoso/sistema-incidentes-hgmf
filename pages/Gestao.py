@@ -1142,24 +1142,69 @@ elif menu == "⚙️ Configurar Menus":
 
     with col_t1:
         st.markdown(f"**Opções do menu: {tab_sel}**")
+        if tab_sel == "Gravidade":
+            st.caption("ℹ️ Defina a **Ordem** de cada nível (1 = menos grave). Esse campo é obrigatório e controla a sequência no formulário.")
+
         df_ed = df_f2.copy()
         df_ed["Excluir"] = False
+
+        # Configuração de colunas: Ordem só aparece (e é obrigatório) em Gravidade
+        col_config_ed = {
+            "id":      None,
+            "Tabela":  None,
+            "Ativo":   st.column_config.CheckboxColumn("Ativo?"),
+            "Excluir": st.column_config.CheckboxColumn("✖"),
+            "Ordem":   None,  # oculto por padrão para outros menus
+        }
+        if tab_sel == "Gravidade":
+            col_config_ed["Ordem"] = st.column_config.NumberColumn(
+                "Ordem",
+                help="Posição na escala de gravidade (1 = menos grave, 6 = mais grave). Obrigatório.",
+                min_value=1,
+                step=1,
+                required=True,
+            )
+
         edited = st.data_editor(
             df_ed,
-            column_config={
-                "id":      None,
-                "Ativo":   st.column_config.CheckboxColumn("Ativo?"),
-                "Excluir": st.column_config.CheckboxColumn("✖"),
-                "Tabela":  None,
-            },
+            column_config=col_config_ed,
             disabled=["id", "Tabela"],
             hide_index=True,
             use_container_width=True
         )
         if st.button("💾 Salvar Alterações", type="primary"):
-            invalid = edited[(edited["Excluir"] != True) & edited["Opcao"].astype(str).str.strip().eq("")]
-            if not invalid.empty:
+            rows_ativos = edited[edited["Excluir"] != True]
+            invalid_nome = rows_ativos[rows_ativos["Opcao"].astype(str).str.strip().eq("")]
+            if not invalid_nome.empty:
                 st.warning("Cada opção de menu deve ter um nome válido ou ser marcada para exclusão.")
+            elif tab_sel == "Gravidade":
+                # Valida que Ordem foi preenchida para todos os itens de Gravidade
+                invalid_ordem = rows_ativos[
+                    rows_ativos["Ordem"].isna() | (pd.to_numeric(rows_ativos["Ordem"], errors="coerce") < 1)
+                ]
+                if not invalid_ordem.empty:
+                    st.warning("⚠️ Preencha a **Ordem** (número ≥ 1) para todas as opções de gravidade antes de salvar.")
+                else:
+                    erros = []
+                    for _, row in edited[edited["Excluir"] == True].iterrows():
+                        try:
+                            db.delete_config_opcao(row["id"], row["Tabela"])
+                        except Exception as e:
+                            erros.append(str(e))
+                    for _, row in rows_ativos.iterrows():
+                        try:
+                            db.save_config_opcao(
+                                row["id"], row["Tabela"],
+                                str(row["Opcao"]).strip(), bool(row["Ativo"]),
+                                int(row["Ordem"])
+                            )
+                        except Exception as e:
+                            erros.append(str(e))
+                    if erros:
+                        st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {'; '.join(erros)}"}
+                    else:
+                        st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Salvo com sucesso!"}
+                    st.rerun()
             else:
                 erros = []
                 for _, row in edited[edited["Excluir"] == True].iterrows():
@@ -1167,7 +1212,7 @@ elif menu == "⚙️ Configurar Menus":
                         db.delete_config_opcao(row["id"], row["Tabela"])
                     except Exception as e:
                         erros.append(str(e))
-                for _, row in edited[edited["Excluir"] != True].iterrows():
+                for _, row in rows_ativos.iterrows():
                     try:
                         db.save_config_opcao(row["id"], row["Tabela"], str(row["Opcao"]).strip(), bool(row["Ativo"]))
                     except Exception as e:
@@ -1181,13 +1226,19 @@ elif menu == "⚙️ Configurar Menus":
     with col_t2:
         st.markdown("**➕ Adicionar Opção**")
         n_op = st.text_input("Nome da nova opção")
+        # Campo Ordem obrigatório somente para Gravidade
+        n_ordem = None
+        if tab_sel == "Gravidade":
+            n_ordem = st.number_input("Ordem *", min_value=1, step=1, value=1,
+                                      help="Posição na escala (1 = menos grave)")
         if st.button("Adicionar", use_container_width=True):
             if n_op.strip():
                 existe = ((df_config["Tabela"] == tab_sel) &
                           (df_config["Opcao"].str.lower() == n_op.strip().lower())).any()
                 if not existe:
                     try:
-                        db.add_config_opcao(tab_sel, n_op.strip())
+                        db.add_config_opcao(tab_sel, n_op.strip(),
+                                            int(n_ordem) if n_ordem is not None else None)
                         st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Opção adicionada com sucesso!"}
                     except Exception as e:
                         st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao adicionar: {e}"}
