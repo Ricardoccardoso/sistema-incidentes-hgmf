@@ -564,15 +564,26 @@ if menu == "📊 Dashboard":
     if filtro_setor != "Todos":
         df_f = df_f[df_f["Setor"] == filtro_setor]
 
-    # ── KPIs ──────────────────────────────────────────────────────────────
-    st.markdown('<div class="secao-titulo">📌 Indicadores do Período</div>', unsafe_allow_html=True)
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
-    k1.metric("Total Notificações",    len(df_f))
-    k2.metric("Near Miss",             len(df_f[df_f["Gravidade"].str.contains("Near", na=False)]))
-    k3.metric("Sem Dano",              len(df_f[df_f["Gravidade"].str.contains("Sem Dano", na=False)]))
-    k4.metric("Dano Grave / Óbito",    len(df_f[df_f["Gravidade"].str.contains("Grave|Óbito", na=False, regex=True)]))
-    k5.metric("LPP",                   len(df_f[df_f["Categoria_Incidente"].str.contains("Pressão", na=False)]))
-    k6.metric("Quedas",                len(df_f[df_f["Categoria_Incidente"].str.contains("Queda", na=False)]))
+    # ── KPIs por Gravidade ────────────────────────────────────────────────
+    # Mostra a distribuição completa da escala de dano — do Near Miss ao Óbito
+    st.markdown('<div class="secao-titulo">⚠️ Indicadores por Gravidade</div>', unsafe_allow_html=True)
+    kg1, kg2, kg3, kg4, kg5, kg6 = st.columns(6)
+    kg1.metric("Total",          len(df_f))
+    kg2.metric("Near Miss",      len(df_f[df_f["Gravidade"].str.contains("Near",      na=False)]))
+    kg3.metric("Sem Dano",       len(df_f[df_f["Gravidade"].str.contains("Sem Dano",  na=False)]))
+    kg4.metric("Dano Leve",      len(df_f[df_f["Gravidade"].str.contains("Leve",      na=False)]))
+    kg5.metric("Dano Moderado",  len(df_f[df_f["Gravidade"].str.contains("Moderado",  na=False)]))
+    kg6.metric("Grave / Óbito",  len(df_f[df_f["Gravidade"].str.contains("Grave|Óbito", na=False, regex=True)]))
+
+    # ── KPIs por Categoria ────────────────────────────────────────────────
+    # Destaques das categorias clínicas de maior vigilância
+    st.markdown('<div class="secao-titulo">🏷️ Indicadores por Categoria</div>', unsafe_allow_html=True)
+    kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+    kc1.metric("LPP",           len(df_f[df_f["Categoria_Incidente"].str.contains("Pressão|LPP",  na=False, regex=True)]))
+    kc2.metric("Quedas",        len(df_f[df_f["Categoria_Incidente"].str.contains("Queda",        na=False)]))
+    kc3.metric("Medicamentos",  len(df_f[df_f["Categoria_Incidente"].str.contains("Medic",        na=False)]))
+    kc4.metric("Identificação", len(df_f[df_f["Categoria_Incidente"].str.contains("Identif",      na=False)]))
+    kc5.metric("Infecção",      len(df_f[df_f["Categoria_Incidente"].str.contains("Infecção|IRAS", na=False, regex=True)]))
 
     st.markdown("---")
 
