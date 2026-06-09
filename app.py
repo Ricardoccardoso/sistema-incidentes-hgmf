@@ -295,6 +295,16 @@ with st.form("form_notificacao", clear_on_submit=True):
             ["Não informado", "Branca", "Preta", "Parda", "Amarela", "Indígena"]
         )
 
+    t1, t2 = st.columns([2, 4])
+    with t1:
+        data_internacao = st.date_input(
+            label("Data_Internacao", "Data de Internação / Atendimento"),
+            value=None,
+            min_value=date(1900, 1, 1),
+            max_value=date.today(),
+            format="DD/MM/YYYY"
+        )
+
     # ── BLOCO 3: Tipo do Incidente ────────────────────────────────────────────
     # Classifica o incidente por tipo, categoria e subcategoria
     st.markdown('<div class="secao-titulo">📋 Tipo do Incidente</div>', unsafe_allow_html=True)
@@ -411,6 +421,7 @@ with st.form("form_notificacao", clear_on_submit=True):
                 "Hora_Relato":           str(hora_relato) if hora_relato else None,
                 "Nome_Paciente":         nome_paciente,
                 "Data_Nascimento":       str(data_nasc) if data_nasc else None,
+                "Data_Internacao":       str(data_internacao) if data_internacao else None,
                 "Raca_Cor":              raca_cor,
                 "Fatores_Causadores":    ", ".join(fatores),
                 "Descricao":             descricao,

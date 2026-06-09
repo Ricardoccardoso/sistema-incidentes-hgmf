@@ -224,6 +224,7 @@ CAMPO_LABELS = {
     "Categoria_Incidente":  "Categoria do Incidente",
     "Data_Incidente":       "Data do Incidente",
     "Data_Nascimento":      "Data de Nascimento",
+    "Data_Internacao":      "Data de Internação / Atendimento",
     "Data_Registro":        "Data do Registro",
     "Data_Relato":          "Data do Relato",
     "Descricao":            "Descrição do Incidente",
@@ -788,6 +789,7 @@ elif menu == "📋 Notificações":
                 st.write(f"- Hora do Relato: {row.get('Hora_Relato','')}")
                 st.write(f"- Paciente: {row.get('Nome_Paciente','')}")
                 st.write(f"- Data Nascimento: {str(row.get('Data_Nascimento',''))[:10]}")
+                st.write(f"- Internação / Atendimento: {str(row.get('Data_Internacao',''))[:10]}")
             with d2:
                 st.markdown("**Gravidade**")
                 st.write(f"- Gravidade: {row.get('Gravidade','')}")
