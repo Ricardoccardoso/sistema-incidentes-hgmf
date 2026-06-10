@@ -53,7 +53,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 /* Cabeçalho com gradiente azul do hospital */
 .cabecalho {
     background: linear-gradient(135deg, #0d47a1 0%, #1565c0 60%, #1976d2 100%);
-    border-radius: 16px;
+    border-radius: 4px;
     padding: 28px 32px 22px 32px;
     margin-bottom: 24px;
     box-shadow: 0 4px 24px rgba(13,71,161,0.18);
@@ -66,7 +66,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .aviso-sigilo {
     background: #e3f2fd;
     border-left: 4px solid #1976d2;
-    border-radius: 8px;
+    border-radius: 2px;
     padding: 12px 18px;
     margin-bottom: 20px;
     color: #0d47a1;
@@ -91,7 +91,7 @@ div[data-testid="stFormSubmitButton"] > button {
     background: linear-gradient(135deg, #0d47a1, #1976d2) !important;
     color: white !important;
     border: none !important;
-    border-radius: 10px !important;
+    border-radius: 3px !important;
     font-weight: 700 !important;
     font-size: 1rem !important;
     padding: 14px !important;

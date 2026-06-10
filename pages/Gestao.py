@@ -66,7 +66,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 [data-testid="metric-container"] {
     background: #f8faff;
     border: 1px solid #e3eaff;
-    border-radius: 12px;
+    border-radius: 3px;
     padding: 18px 20px !important;
     box-shadow: 0 2px 8px rgba(13,71,161,0.06);
 }
@@ -88,7 +88,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     background: #fff;
     border: 1px solid #e8edf5;
     border-left: 4px solid #1976d2;
-    border-radius: 10px;
+    border-radius: 3px;
     padding: 14px 18px;
     margin-bottom: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.04);
@@ -102,7 +102,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .badge {
     display: inline-block;
     padding: 2px 10px;
-    border-radius: 20px;
+    border-radius: 3px;
     font-size: 0.74rem;
     font-weight: 600;
     margin-right: 4px;
@@ -124,7 +124,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 }
 
 div.stButton > button {
-    border-radius: 8px !important;
+    border-radius: 3px !important;
     font-weight: 600 !important;
     font-size: 0.85rem !important;
 }
