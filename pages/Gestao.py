@@ -110,6 +110,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .badge-novo      { background:#e3f2fd; color:#0d47a1; }
 .badge-analise   { background:#fff8e1; color:#f57f17; }
 .badge-concluido { background:#e8f5e9; color:#2e7d32; }
+.badge-anulado   { background:#eceff1; color:#546e7a; }
 .badge-critico   { background:#ffebee; color:#c62828; }
 
 .secao-titulo {
@@ -152,7 +153,7 @@ COLUNAS_DADOS = [
     "Relator", "Funcao_Relator", "Status"
 ]
 
-STATUS_OPTS    = ["Investigar", "Notificar", "Em Análise", "Pendência", "Concluído"]
+STATUS_OPTS    = ["Investigar", "Notificar", "Em Análise", "Pendência", "Concluído", "Anulado"]
 PERMISSOES     = ["Acesso Total", "Apenas Relatórios", "Apenas Configurar Tabelas"]
 MENU_OPTIONS   = [
     ("📊 Dashboard", "Dashboard"),
@@ -684,8 +685,8 @@ if menu == "📊 Dashboard":
         st.subheader("Status das Notificações")
         df_status = df_f["Status"].value_counts().reset_index()
         df_status.columns = ["Status", "Qtd"]
-        s1, s2, s3, s4, s5 = st.columns(5)
-        for col_k, status_n in zip([s1, s2, s3, s4, s5], STATUS_OPTS):
+        s1, s2, s3, s4, s5, s6 = st.columns(6)
+        for col_k, status_n in zip([s1, s2, s3, s4, s5, s6], STATUS_OPTS):
             qtd = int(df_status[df_status["Status"] == status_n]["Qtd"].sum()) if not df_status.empty else 0
             col_k.metric(status_n, qtd)
 
@@ -744,7 +745,8 @@ elif menu == "📋 Notificações":
         badge_class = {
             "Investigar": "badge-analise", "Notificar": "badge-critico",
             "Em Análise": "badge-analise", "Pendência": "badge-critico",
-            "Concluído": "badge-concluido"
+            "Concluído": "badge-concluido",
+            "Anulado": "badge-anulado"
         }.get(status_val, "badge-novo")
 
         st.markdown(f"""
