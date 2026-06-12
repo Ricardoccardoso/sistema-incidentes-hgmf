@@ -565,6 +565,7 @@ if menu == "📊 Dashboard":
     ].copy()
     if filtro_setor != "Todos":
         df_f = df_f[df_f["Setor"] == filtro_setor]
+    df_f = df_f[df_f["Status"].fillna("") != "Anulado"]
 
     # ── KPIs por Gravidade ────────────────────────────────────────────────
     # Mostra a distribuição completa da escala de dano — do Near Miss ao Óbito
@@ -976,6 +977,7 @@ elif menu == "📈 Relatórios":
         st.stop()
 
     df_dados["Data_Incidente"] = pd.to_datetime(df_dados["Data_Incidente"], errors="coerce")
+    df_dados = df_dados[df_dados["Status"].fillna("") != "Anulado"].copy()
 
     tipo_rel = st.selectbox("Selecione o Relatório", [
         "Resumo Mensal por Categoria",
@@ -1115,6 +1117,7 @@ elif menu == "📁 Exportar Dados":
         (df_dados["Data_Incidente"] >= pd.to_datetime(data_ini_e)) &
         (df_dados["Data_Incidente"] <= pd.to_datetime(data_fim_e))
     ].copy()
+    df_exp = df_exp[df_exp["Status"].fillna("") != "Anulado"]
 
     st.markdown(f"**{len(df_exp)}** registros no período selecionado.")
 
