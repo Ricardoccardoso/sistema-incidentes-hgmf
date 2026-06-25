@@ -579,14 +579,23 @@ if menu == "📊 Dashboard":
     kg6.metric("Grave / Óbito",  len(df_f[df_f["Gravidade"].str.contains("Grave|Óbito", na=False, regex=True)]))
 
     # ── KPIs por Categoria ────────────────────────────────────────────────
-    # Destaques das categorias clínicas de maior vigilância
+    # Total + 5 categorias clínicas prioritárias + Outras (tudo que não se encaixa nas 5)
     st.markdown('<div class="secao-titulo">🏷️ Indicadores por Categoria</div>', unsafe_allow_html=True)
-    kc1, kc2, kc3, kc4, kc5 = st.columns(5)
-    kc1.metric("LPP",           len(df_f[df_f["Categoria_Incidente"].str.contains("Pressão|LPP",  na=False, regex=True)]))
-    kc2.metric("Quedas",        len(df_f[df_f["Categoria_Incidente"].str.contains("Queda",        na=False)]))
-    kc3.metric("Medicamentos",  len(df_f[df_f["Categoria_Incidente"].str.contains("Medic",        na=False)]))
-    kc4.metric("Identificação", len(df_f[df_f["Categoria_Incidente"].str.contains("Identif",      na=False)]))
-    kc5.metric("Infecção",      len(df_f[df_f["Categoria_Incidente"].str.contains("Infecção|IRAS", na=False, regex=True)]))
+    _cat = df_f["Categoria_Incidente"].fillna("")
+    _lpp   = _cat.str.contains("Pressão|LPP",   regex=True)
+    _queda = _cat.str.contains("Queda")
+    _med   = _cat.str.contains("Medic")
+    _ident = _cat.str.contains("Identif")
+    _inf   = _cat.str.contains("Infecção|IRAS", regex=True)
+    _outras = ~(_lpp | _queda | _med | _ident | _inf) & (_cat != "")
+    kc1, kc2, kc3, kc4, kc5, kc6, kc7 = st.columns(7)
+    kc1.metric("Total",         len(df_f))
+    kc2.metric("LPP",           int(_lpp.sum()))
+    kc3.metric("Quedas",        int(_queda.sum()))
+    kc4.metric("Medicamentos",  int(_med.sum()))
+    kc5.metric("Identificação", int(_ident.sum()))
+    kc6.metric("Infecção",      int(_inf.sum()))
+    kc7.metric("Outras",        int(_outras.sum()))
 
     st.markdown("---")
 
