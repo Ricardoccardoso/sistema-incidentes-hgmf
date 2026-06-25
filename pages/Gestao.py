@@ -153,7 +153,7 @@ COLUNAS_DADOS = [
     "Relator", "Funcao_Relator", "Status"
 ]
 
-STATUS_OPTS    = ["Investigar", "Notificar", "Em Análise", "Pendência", "Concluído", "Anulado"]
+STATUS_OPTS    = ["Novo", "Investigar", "Notificar", "Em Análise", "Pendência", "Concluído", "Anulado"]
 PERMISSOES     = ["Acesso Total", "Apenas Relatórios", "Apenas Configurar Tabelas"]
 MENU_OPTIONS   = [
     ("📊 Dashboard", "Dashboard"),
@@ -686,8 +686,8 @@ if menu == "📊 Dashboard":
         st.subheader("Status das Notificações")
         df_status = df_f["Status"].value_counts().reset_index()
         df_status.columns = ["Status", "Qtd"]
-        s1, s2, s3, s4, s5, s6 = st.columns(6)
-        for col_k, status_n in zip([s1, s2, s3, s4, s5, s6], STATUS_OPTS):
+        s1, s2, s3, s4, s5, s6, s7 = st.columns(7)
+        for col_k, status_n in zip([s1, s2, s3, s4, s5, s6, s7], STATUS_OPTS):
             qtd = int(df_status[df_status["Status"] == status_n]["Qtd"].sum()) if not df_status.empty else 0
             col_k.metric(status_n, qtd)
 
@@ -744,6 +744,7 @@ elif menu == "📋 Notificações":
         cor = _cor_gravidade(str(row.get("Gravidade", "")))
         status_val = str(row.get("Status", "Novo"))
         badge_class = {
+            "Novo":       "badge-novo",
             "Investigar": "badge-analise", "Notificar": "badge-critico",
             "Em Análise": "badge-analise", "Pendência": "badge-critico",
             "Concluído": "badge-concluido",
