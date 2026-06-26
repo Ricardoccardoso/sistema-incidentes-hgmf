@@ -91,7 +91,7 @@ div[data-testid="stFormSubmitButton"] > button {
     background: linear-gradient(135deg, #0d47a1, #1976d2) !important;
     color: white !important;
     border: none !important;
-    border-radius: 3px !important;
+    border-radius: 10px !important;
     font-weight: 700 !important;
     font-size: 1rem !important;
     padding: 14px !important;
@@ -342,9 +342,15 @@ with st.form("form_notificacao", clear_on_submit=True):
     # Escala de severidade do dano causado ao paciente
     st.markdown('<div class="secao-titulo">⚠️ Gravidade e Dano</div>', unsafe_allow_html=True)
     # A ordem das opções vem diretamente do banco (coluna Ordem da tabela config_gravidade)
-    # ordenar_gravidade() não é mais aplicada aqui para respeitar a sequência definida pelo gestor
+    # O slider exibe apenas o nome curto (antes do parêntese); a descrição completa aparece abaixo.
     gravidade_ops = get_opcoes(df_config, "Gravidade")
-    gravidade = st.select_slider(label("Gravidade", "Nível de Gravidade / Classificação do Dano"), options=gravidade_ops)
+    gravidade_labels = [op.split("(")[0].strip() for op in gravidade_ops]
+    gravidade_full   = dict(zip(gravidade_labels, gravidade_ops))
+    gravidade_label  = st.select_slider(label("Gravidade", "Nível de Gravidade / Classificação do Dano"), options=gravidade_labels)
+    gravidade_descr  = gravidade_full.get(gravidade_label, gravidade_label)
+    if "(" in gravidade_descr:
+        st.caption(gravidade_descr)
+    gravidade = gravidade_descr  # valor completo salvo no banco
 
     # ── BLOCO 5: Fatores Causadores ───────────────────────────────────────────
     # Permite selecionar múltiplos fatores que contribuíram para o incidente
