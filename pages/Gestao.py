@@ -640,7 +640,7 @@ if menu == "📊 Dashboard":
         df_tmp = df_f.copy()
         df_tmp["Semana"] = df_tmp["Data_Incidente"].dt.to_period("W").apply(lambda r: str(r.start_time.date()))
         df_sem = df_tmp.groupby("Semana").size().reset_index(name="Qtd")
-        chart_sem = alt.Chart(df_sem).mark_line(point=True, strokeWidth=2, color="#1565c0").encode(
+        chart_sem = alt.Chart(df_sem).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3, color="#1565c0").encode(
             x=alt.X("Semana:O", title="Semana"),
             y=alt.Y("Qtd:Q",   title="Notificações"),
             tooltip=["Semana", "Qtd"]
@@ -1036,6 +1036,14 @@ elif menu == "📈 Relatórios":
         df_nm = df_dados[df_dados["Gravidade"].str.contains("Near", na=False)].copy()
         st.metric("Total de Near Miss", len(df_nm))
         if not df_nm.empty:
+            df_nm_set = df_nm["Setor"].value_counts().reset_index()
+            df_nm_set.columns = ["Setor", "Qtd"]
+            chart = alt.Chart(df_nm_set).mark_bar(cornerRadiusTopRight=3, cornerRadiusTopLeft=3, color="#7b1fa2").encode(
+                x=alt.X("Setor:N", sort="-y", title=""),
+                y=alt.Y("Qtd:Q", title="Ocorrências"),
+                tooltip=["Setor", "Qtd"]
+            ).properties(height=260)
+            st.altair_chart(chart, use_container_width=True)
             st.dataframe(df_nm[["Data_Incidente","Setor","Categoria_Incidente","Fatores_Causadores","Descricao"]],
                          use_container_width=True, hide_index=True)
 
@@ -1043,6 +1051,25 @@ elif menu == "📈 Relatórios":
         df_gr = df_dados[df_dados["Gravidade"].str.contains("Grave|Óbito", na=False, regex=True)].copy()
         st.metric("Total de Incidentes Graves", len(df_gr))
         if not df_gr.empty:
+            gra1, gra2 = st.columns(2)
+            with gra1:
+                df_gr_set = df_gr["Setor"].value_counts().reset_index()
+                df_gr_set.columns = ["Setor", "Qtd"]
+                chart = alt.Chart(df_gr_set).mark_bar(cornerRadiusTopRight=3, color="#c62828").encode(
+                    x=alt.X("Qtd:Q", title="Ocorrências"),
+                    y=alt.Y("Setor:N", sort="-x", title=""),
+                    tooltip=["Setor", "Qtd"]
+                ).properties(height=260)
+                st.altair_chart(chart, use_container_width=True)
+            with gra2:
+                df_gr_cat = df_gr["Categoria_Incidente"].value_counts().reset_index()
+                df_gr_cat.columns = ["Categoria", "Qtd"]
+                chart2 = alt.Chart(df_gr_cat).mark_bar(cornerRadiusTopRight=3, color="#b71c1c").encode(
+                    x=alt.X("Qtd:Q", title="Ocorrências"),
+                    y=alt.Y("Categoria:N", sort="-x", title=""),
+                    tooltip=["Categoria", "Qtd"]
+                ).properties(height=260)
+                st.altair_chart(chart2, use_container_width=True)
             st.dataframe(df_gr[["Data_Incidente","Setor","Categoria_Incidente","Gravidade",
                                   "Nome_Paciente","Data_Nascimento","Descricao","Relator"]],
                          use_container_width=True, hide_index=True)
@@ -1075,16 +1102,47 @@ elif menu == "📈 Relatórios":
             with col_qa:
                 df_tipo_queda = df_q["Subcategoria"].value_counts().reset_index()
                 df_tipo_queda.columns = ["Tipo", "Qtd"]
+                chart_q1 = alt.Chart(df_tipo_queda).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3, color="#f57f17").encode(
+                    x=alt.X("Tipo:N", sort="-y", title=""),
+                    y=alt.Y("Qtd:Q", title="Ocorrências"),
+                    tooltip=["Tipo", "Qtd"]
+                ).properties(height=240)
+                st.altair_chart(chart_q1, use_container_width=True)
                 st.dataframe(df_tipo_queda, use_container_width=True, hide_index=True)
             with col_qb:
                 df_queda_set = df_q["Setor"].value_counts().reset_index()
                 df_queda_set.columns = ["Setor", "Qtd"]
+                chart_q2 = alt.Chart(df_queda_set).mark_bar(cornerRadiusTopRight=3, color="#e65100").encode(
+                    x=alt.X("Qtd:Q", title="Ocorrências"),
+                    y=alt.Y("Setor:N", sort="-x", title=""),
+                    tooltip=["Setor", "Qtd"]
+                ).properties(height=240)
+                st.altair_chart(chart_q2, use_container_width=True)
                 st.dataframe(df_queda_set, use_container_width=True, hide_index=True)
 
     elif tipo_rel == "Análise Medicamentosa":
         df_med = df_dados[df_dados["Categoria_Incidente"].str.contains("Medic|Medicament", na=False)].copy()
         st.metric("Total Falhas Medicamentosas", len(df_med))
         if not df_med.empty:
+            med1, med2 = st.columns(2)
+            with med1:
+                df_med_sub = df_med["Subcategoria"].value_counts().reset_index()
+                df_med_sub.columns = ["Tipo de Falha", "Qtd"]
+                chart_med = alt.Chart(df_med_sub).mark_bar(cornerRadiusTopRight=3, color="#1565c0").encode(
+                    x=alt.X("Qtd:Q", title="Ocorrências"),
+                    y=alt.Y("Tipo de Falha:N", sort="-x", title=""),
+                    tooltip=["Tipo de Falha", "Qtd"]
+                ).properties(height=240)
+                st.altair_chart(chart_med, use_container_width=True)
+            with med2:
+                df_med_set = df_med["Setor"].value_counts().reset_index()
+                df_med_set.columns = ["Setor", "Qtd"]
+                chart_med2 = alt.Chart(df_med_set).mark_bar(cornerRadiusTopRight=3, color="#0288d1").encode(
+                    x=alt.X("Qtd:Q", title="Ocorrências"),
+                    y=alt.Y("Setor:N", sort="-x", title=""),
+                    tooltip=["Setor", "Qtd"]
+                ).properties(height=240)
+                st.altair_chart(chart_med2, use_container_width=True)
             st.dataframe(df_med[["Data_Incidente","Setor","Subcategoria","Medicamento_Envolvido",
                                    "Gravidade","Descricao"]],
                          use_container_width=True, hide_index=True)
