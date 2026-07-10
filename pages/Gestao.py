@@ -296,26 +296,57 @@ def get_opcoes(df_conf, tabela):
     return db.get_opcoes(df_conf, tabela)
 
 
-def gerar_html_impressao(df_rows: pd.DataFrame) -> str:
+def gerar_html_impressao(df_rows: pd.DataFrame, df_registros: pd.DataFrame | None = None) -> str:
     """
     Gera um documento HTML formatado para impressão/PDF de uma ou mais notificações.
 
     O HTML inclui:
       - Cabeçalho com nome do hospital e data de geração
       - Uma seção por notificação com todos os campos relevantes
+      - Tabela de registros da equipe de segurança (se df_registros for fornecido)
       - CSS de impressão (A4, page-break-inside:avoid)
       - Botão fixo "Imprimir / Salvar PDF" que aciona window.print()
 
     Todos os valores são escapados via html.escape() para evitar XSS.
 
     Parâmetros:
-      df_rows — DataFrame com uma ou mais linhas de incidentes
+      df_rows      — DataFrame com uma ou mais linhas de incidentes
+      df_registros — DataFrame com os registros de ação da equipe (opcional)
 
     Retorna string HTML pronta para download ou exibição.
     """
     def esc(v):
         """Escapa caracteres HTML especiais para evitar XSS no documento gerado."""
         return html_mod.escape(str(v or "—"))
+
+    # Monta tabela de registros da equipe de segurança
+    bloco_registros = ""
+    if df_registros is not None and not df_registros.empty:
+        linhas_reg = ""
+        for _, reg in df_registros.iterrows():
+            data_hora = str(reg.get("Data_Registro", ""))[:16]
+            usuario   = esc(reg.get("Usuario", "—"))
+            descricao = esc(reg.get("Descricao", "—"))
+            linhas_reg += f"""
+            <tr>
+              <td style="white-space:nowrap;width:120px">{data_hora}</td>
+              <td style="white-space:nowrap;width:110px">{usuario}</td>
+              <td>{descricao}</td>
+            </tr>"""
+        bloco_registros = f"""
+        <div class="secao-reg">
+          <div class="reg-titulo">📋 Registros da Equipe de Segurança</div>
+          <table class="tabela-reg">
+            <thead>
+              <tr>
+                <th>Data / Hora</th>
+                <th>Usuário</th>
+                <th>Descrição da Ação</th>
+              </tr>
+            </thead>
+            <tbody>{linhas_reg}</tbody>
+          </table>
+        </div>"""
 
     linhas = []
     for i, (_, row) in enumerate(df_rows.iterrows()):
@@ -349,6 +380,7 @@ def gerar_html_impressao(df_rows: pd.DataFrame) -> str:
           <div class="campo"><div class="lbl">Fatores Causadores</div>{esc(row.get("Fatores_Causadores","") or "—")}</div>
           <div class="campo"><div class="lbl">Descrição do Incidente</div>{esc(row.get("Descricao","") or "—")}</div>
           {bloco_acoes}
+          {bloco_registros}
           <div class="rodape">
             Registrado em: {str(row.get("Data_Registro",""))[:16]} &nbsp;|&nbsp;
             Relato: {str(row.get("Data_Relato",""))[:10]} {str(row.get("Hora_Relato",""))[:5]}
@@ -375,6 +407,15 @@ def gerar_html_impressao(df_rows: pd.DataFrame) -> str:
   .lbl {{ font-size:8.5px; text-transform:uppercase; color:#666; font-weight:700; margin-bottom:2px; }}
   .campo {{ padding:8px; background:#f8f9fc; border-radius:4px; margin:6px 0; line-height:1.5; }}
   .rodape {{ font-size:9px; color:#888; margin-top:10px; border-top:1px solid #eee; padding-top:6px; }}
+  .secao-reg {{ margin:10px 0 6px 0; }}
+  .reg-titulo {{ font-size:10px; font-weight:700; text-transform:uppercase; color:#0d47a1;
+                 letter-spacing:0.8px; margin-bottom:5px; padding-left:2px; }}
+  .tabela-reg {{ width:100%; border-collapse:collapse; font-size:10px; }}
+  .tabela-reg th {{ background:#e8f0fe; color:#0d47a1; font-weight:700; text-align:left;
+                    padding:5px 8px; border:1px solid #c8d8f0; font-size:9px;
+                    text-transform:uppercase; letter-spacing:0.5px; }}
+  .tabela-reg td {{ padding:5px 8px; border:1px solid #dde; vertical-align:top; }}
+  .tabela-reg tbody tr:nth-child(even) {{ background:#f5f8ff; }}
   .print-btn {{ position:fixed; top:16px; right:16px; background:#0d47a1; color:#fff; border:none;
                 padding:10px 20px; border-radius:6px; cursor:pointer; font-size:13px; z-index:999; }}
   @media print {{ .print-btn {{ display:none; }} }}
@@ -826,9 +867,11 @@ elif menu == "📋 Notificações":
             # Botão de impressão: abre nova aba com conteúdo formatado e dispara window.print()
             st.markdown("---")
             if st.button("🖨️ Imprimir esta notificação", key=f"print_{idx}", use_container_width=True):
-                # Gera o HTML e armazena na sessão para o componente JS abaixo
+                # Carrega registros da equipe para incluir na impressão
+                _df_reg_print = db.load_registros_acao(row.get("id"))
                 st.session_state[f"_print_html_{idx}"] = gerar_html_impressao(
-                    pd.DataFrame([row.to_dict()])
+                    pd.DataFrame([row.to_dict()]),
+                    df_registros=_df_reg_print if not _df_reg_print.empty else None
                 )
 
             # Componente JS renderizado apenas após o clique — abre janela e imprime
