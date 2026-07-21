@@ -196,8 +196,16 @@ st.markdown(f"""
 
 # ─── Carregamento de dados de configuração ────────────────────────────────────
 # Carregado fora do formulário para não recarregar a cada interação interna
-df_config = load_config()   # opções dos selectboxes (turnos, setores, categorias, etc.)
-df_dados  = load_data()     # incidentes já registrados (usado apenas como referência)
+try:
+    df_config = load_config()
+    df_dados  = load_data()
+except Exception as _conn_err:
+    st.error(
+        "⚠️ **Não foi possível conectar ao banco de dados.**\n\n"
+        "Verifique se o projeto Supabase está ativo (pode estar pausado no plano gratuito) "
+        "e se as credenciais nos Secrets do Streamlit Cloud estão corretas."
+    )
+    st.stop()
 
 # Carrega flags de obrigatoriedade — define quais campos são marcados com *
 try:

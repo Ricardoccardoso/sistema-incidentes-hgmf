@@ -386,6 +386,7 @@ def load_data() -> pd.DataFrame:
     Carrega todos os registros de incidentes do banco, ordenados do mais
     recente para o mais antigo (Data_Registro desc).
     Retorna um DataFrame com todas as colunas definidas em COLUNAS_INCIDENTES.
+    Propaga exceções de conexão (httpx.ConnectError, etc.) para o chamador tratar.
     """
     sb = get_client()
     res = sb.table("incidentes").select("*").order("Data_Registro", desc=True).execute()
