@@ -200,11 +200,16 @@ try:
     df_config = load_config()
     df_dados  = load_data()
 except Exception as _conn_err:
-    st.error(
-        "⚠️ **Não foi possível conectar ao banco de dados.**\n\n"
-        "Verifique se o projeto Supabase está ativo (pode estar pausado no plano gratuito) "
-        "e se as credenciais nos Secrets do Streamlit Cloud estão corretas."
-    )
+    st.markdown("""
+    <div style="max-width:480px; margin:80px auto; text-align:center; font-family:'Inter',sans-serif;">
+      <div style="font-size:3rem;">🔧</div>
+      <h2 style="color:#0d47a1; margin:12px 0 8px;">Sistema em Manutenção</h2>
+      <p style="color:#546e7a; font-size:0.95rem; line-height:1.6;">
+        O sistema está temporariamente indisponível para manutenção.<br>
+        Por favor, tente novamente em alguns instantes.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
 # Carrega flags de obrigatoriedade — define quais campos são marcados com *
