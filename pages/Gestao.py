@@ -592,21 +592,31 @@ if menu == "📊 Dashboard":
 
     # ── Filtro de período ──────────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">🗓️ Filtro de Período</div>', unsafe_allow_html=True)
+
+    # Data mínima disponível no banco (ou 2020 como fallback)
+    _datas_validas = df_dados["Data_Incidente"].dropna()
+    _data_min = _datas_validas.min().date() if not _datas_validas.empty else date(2020, 1, 1)
+
     cf1, cf2, cf3 = st.columns([2, 2, 2])
     with cf1:
-        data_ini = st.date_input("De", value=(date.today() - timedelta(days=30)))
+        data_ini = st.date_input("De", value=_data_min, format="DD/MM/YYYY")
     with cf2:
-        data_fim = st.date_input("Até", value=date.today())
+        data_fim = st.date_input("Até", value=date.today(), format="DD/MM/YYYY")
     with cf3:
         filtro_setor = st.selectbox("Setor", ["Todos"] + sorted(df_dados["Setor"].dropna().unique().tolist()))
 
-    df_f = df_dados[
+    # Inclui registros sem Data_Incidente (NaT) e os que estão dentro do período
+    _sem_data = df_dados["Data_Incidente"].isna()
+    _no_periodo = (
         (df_dados["Data_Incidente"] >= pd.to_datetime(data_ini)) &
         (df_dados["Data_Incidente"] <= pd.to_datetime(data_fim))
-    ].copy()
+    )
+    df_f = df_dados[_sem_data | _no_periodo].copy()
     if filtro_setor != "Todos":
         df_f = df_f[df_f["Setor"] == filtro_setor]
     df_f = df_f[df_f["Status"].fillna("") != "Anulado"]
+
+    st.caption(f"Exibindo **{len(df_f)}** notificações no período selecionado.")
 
     # ── KPIs por Gravidade ────────────────────────────────────────────────
     # Mostra a distribuição completa da escala de dano — do Near Miss ao Óbito
@@ -1219,9 +1229,9 @@ elif menu == "📁 Exportar Dados":
 
     e1, e2 = st.columns(2)
     with e1:
-        data_ini_e = st.date_input("De", value=(date.today() - timedelta(days=90)), key="exp_ini")
+        data_ini_e = st.date_input("De", value=(date.today() - timedelta(days=90)), key="exp_ini", format="DD/MM/YYYY")
     with e2:
-        data_fim_e = st.date_input("Até", value=date.today(), key="exp_fim")
+        data_fim_e = st.date_input("Até", value=date.today(), key="exp_fim", format="DD/MM/YYYY")
 
     df_dados["Data_Incidente"] = pd.to_datetime(df_dados["Data_Incidente"], errors="coerce")
     df_exp = df_dados[
