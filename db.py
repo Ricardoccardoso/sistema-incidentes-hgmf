@@ -293,6 +293,7 @@ def load_config_table(tabela: str) -> pd.DataFrame:
         return df[["id", "Tabela", "Opcao", "Ativo"]]
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def load_config() -> pd.DataFrame:
     """
     Carrega todas as tabelas de configuração e retorna um DataFrame unificado.
@@ -302,6 +303,9 @@ def load_config() -> pd.DataFrame:
       - Demais tabelas: ordenadas alfabeticamente por Tabela + Opcao
 
     O DataFrame pode conter a coluna Ordem (NaN para tabelas que não são Gravidade).
+
+    Cacheado por 60s — opções de menu mudam raramente; evita 9 consultas ao
+    Supabase (uma por tabela de configuração) a cada interação na interface.
     """
     tables = []
     for tabela in CONFIG_TABLES:
@@ -341,6 +345,7 @@ def save_config_opcao(row_id: int | str, tabela: str, opcao: str, ativo: bool,
     if tabela == "Gravidade" and ordem is not None:
         data["Ordem"] = int(ordem)
     sb.table(table_name).update(data).eq("id", row_id).execute()
+    load_config.clear()
 
 
 def delete_config_opcao(row_id: int | str, tabela: str) -> None:
@@ -356,6 +361,7 @@ def delete_config_opcao(row_id: int | str, tabela: str) -> None:
         raise ValueError(f"Tabela de configuração desconhecida: {tabela}")
     sb = get_client()
     sb.table(table_name).delete().eq("id", row_id).execute()
+    load_config.clear()
 
 
 def add_config_opcao(tabela: str, opcao: str, ordem: int | None = None) -> None:
@@ -375,18 +381,26 @@ def add_config_opcao(tabela: str, opcao: str, ordem: int | None = None) -> None:
     if tabela == "Gravidade" and ordem is not None:
         data["Ordem"] = int(ordem)
     sb.table(table_name).insert(data).execute()
+    load_config.clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # INCIDENTES — operações CRUD na tabela principal
 # ══════════════════════════════════════════════════════════════════════════════
 
+@st.cache_data(ttl=30, show_spinner=False)
 def load_data() -> pd.DataFrame:
     """
     Carrega todos os registros de incidentes do banco, ordenados do mais
     recente para o mais antigo (Data_Registro desc).
     Retorna um DataFrame com todas as colunas definidas em COLUNAS_INCIDENTES.
     Propaga exceções de conexão (httpx.ConnectError, etc.) para o chamador tratar.
+
+    Cacheado por 30s (@st.cache_data) — evita recarregar a tabela inteira do
+    Supabase a cada interação com a interface (cada clique/checkbox dispara
+    uma nova execução do script). Após qualquer escrita em "incidentes" o
+    cache é invalidado explicitamente (load_data.clear()) para refletir a
+    mudança imediatamente, sem esperar o TTL expirar.
     """
     sb = get_client()
     res = sb.table("incidentes").select("*").order("Data_Registro", desc=True).execute()
@@ -405,6 +419,7 @@ def save_incidente(novo: dict) -> None:
     sb = get_client()
     novo.pop("id", None)
     sb.table("incidentes").insert(novo).execute()
+    load_data.clear()
 
 
 def update_incidente(row_id: int | str, campos: dict) -> None:
@@ -419,6 +434,7 @@ def update_incidente(row_id: int | str, campos: dict) -> None:
     sb = get_client()
     campos.pop("id", None)
     sb.table("incidentes").update(campos).eq("id", row_id).execute()
+    load_data.clear()
 
 
 def delete_incidente(row_id: int | str) -> None:
@@ -430,12 +446,14 @@ def delete_incidente(row_id: int | str) -> None:
     """
     sb = get_client()
     sb.table("incidentes").delete().eq("id", row_id).execute()
+    load_data.clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # REGISTROS DE AÇÃO — acompanhamento pela equipe de segurança do paciente
 # ══════════════════════════════════════════════════════════════════════════════
 
+@st.cache_data(ttl=30, show_spinner=False)
 def load_registros_acao(incidente_id) -> pd.DataFrame:
     """
     Carrega todos os registros de ação vinculados a um incidente específico,
@@ -445,6 +463,11 @@ def load_registros_acao(incidente_id) -> pd.DataFrame:
       incidente_id — id do incidente pai
 
     Retorna DataFrame com colunas: id, Incidente_Id, Data_Registro, Descricao, Usuario
+
+    Cacheado por 30s — a tela de Notificações chama esta função uma vez por
+    notificação exibida (mesmo com o card fechado), então sem cache cada
+    interação na página recarregava os registros de todas as notificações
+    visíveis de uma vez.
     """
     sb = get_client()
     try:
@@ -475,6 +498,7 @@ def save_registro_acao(incidente_id, descricao: str, usuario: str) -> None:
         "Descricao": descricao.strip(),
         "Usuario": usuario,
     }).execute()
+    load_registros_acao.clear()
 
 
 def delete_registro_acao(row_id) -> None:
@@ -486,6 +510,7 @@ def delete_registro_acao(row_id) -> None:
     """
     sb = get_client()
     sb.table("registro_acoes").delete().eq("id", row_id).execute()
+    load_registros_acao.clear()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -504,6 +529,7 @@ _DEFAULT_CAMPOS = [
 ]
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def load_field_flags() -> pd.DataFrame:
     """
     Carrega a configuração de obrigatoriedade de cada campo do formulário.
@@ -512,6 +538,8 @@ def load_field_flags() -> pd.DataFrame:
     Garante que a coluna Obrigatorio seja sempre booleana Python (via _to_bool).
 
     Retorna DataFrame com colunas: id, Campo, Obrigatorio
+
+    Cacheado por 60s — muda raramente; evita consulta a cada interação.
     """
     sb = get_client()
     try:
@@ -546,6 +574,7 @@ def save_field_flag(row_id: int | str, obrigatorio: bool | str) -> None:
     """
     sb = get_client()
     sb.table("config_campos").update({"Obrigatorio": _to_bool(obrigatorio)}).eq("id", row_id).execute()
+    load_field_flags.clear()
 
 
 def get_opcoes(df_conf: pd.DataFrame, tabela: str) -> list[str]:
@@ -568,6 +597,7 @@ def get_opcoes(df_conf: pd.DataFrame, tabela: str) -> list[str]:
 # USUÁRIOS — autenticação e gerenciamento de acesso
 # ══════════════════════════════════════════════════════════════════════════════
 
+@st.cache_data(ttl=30, show_spinner=False)
 def load_users() -> pd.DataFrame:
     """
     Carrega todos os usuários cadastrados no banco.
@@ -576,6 +606,10 @@ def load_users() -> pd.DataFrame:
     um usuário 'admin' com senha 'admin123' e permissão 'Acesso Total'.
 
     Retorna DataFrame com colunas: id, Usuario, Senha_Hash, Permissao, Ativo, Data_Criacao
+
+    Cacheado por 30s — invalidado imediatamente (load_users.clear()) após
+    qualquer criação/edição/remoção de usuário, então login e permissões
+    sempre refletem a última alteração.
     """
     sb = get_client()
     res = sb.table("usuarios").select("*").execute()
@@ -606,6 +640,7 @@ def save_user(novo: dict) -> None:
     sb = get_client()
     novo.pop("id", None)
     sb.table("usuarios").insert(novo).execute()
+    load_users.clear()
 
 
 def update_user(row_id: int | str, campos: dict) -> None:
@@ -620,6 +655,7 @@ def update_user(row_id: int | str, campos: dict) -> None:
     sb = get_client()
     campos.pop("id", None)
     sb.table("usuarios").update(campos).eq("id", row_id).execute()
+    load_users.clear()
 
 
 def delete_user(row_id: int | str) -> None:
@@ -632,3 +668,4 @@ def delete_user(row_id: int | str) -> None:
     """
     sb = get_client()
     sb.table("usuarios").delete().eq("id", row_id).execute()
+    load_users.clear()

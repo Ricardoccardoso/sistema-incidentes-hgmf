@@ -853,6 +853,13 @@ if menu == "📊 Dashboard":
     ].sort_values("Data_Registro", ascending=False)
 
     if not df_alertas.empty:
+        # Mostra só os mais recentes: com muitas notificações "Novo" acumuladas,
+        # renderizar um card+botões por item deixava a página inteira lenta.
+        # "Marcar todas como vistas" continua operando sobre o conjunto completo.
+        _LIMITE_ALERTAS = 8
+        df_alertas_exibir = df_alertas.head(_LIMITE_ALERTAS)
+        _restantes = len(df_alertas) - len(df_alertas_exibir)
+
         with st.container(border=True):
             col_al1, col_al2 = st.columns([5, 2])
             with col_al1:
@@ -862,7 +869,7 @@ if menu == "📊 Dashboard":
                     st.session_state["alertas_vistos"] = alertas_vistos | set(df_alertas["id"].tolist())
                     st.rerun()
 
-            for _, arow in df_alertas.iterrows():
+            for _, arow in df_alertas_exibir.iterrows():
                 a_id = arow.get("id")
                 titulo = str(arow.get("Categoria_Incidente", "—"))
                 if arow.get("Subcategoria"):
@@ -893,6 +900,12 @@ if menu == "📊 Dashboard":
                     if st.button("Visto", key=f"visto_alerta_{a_id}", use_container_width=True):
                         st.session_state["alertas_vistos"] = alertas_vistos | {a_id}
                         st.rerun()
+
+            if _restantes > 0:
+                st.caption(
+                    f"+ {_restantes} notificação(ões) adicional(is) — "
+                    "veja a aba Notificações filtrando por Status = Novo."
+                )
 
     # ── Filtro de período ──────────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">🗓️ Filtro de Período</div>', unsafe_allow_html=True)
