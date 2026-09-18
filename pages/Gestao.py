@@ -12,9 +12,14 @@ Funcionalidades disponíveis conforme permissão do usuário:
   👥 Usuários         — criar, editar permissões e remover usuários
 
 Sistema de permissões:
-  - Menus: controlam quais abas o usuário vê na navegação
-  - CAP_EDITAR    (cap_editar_notificacoes):  exibe botão de edição de registros
-  - CAP_REGISTROS (cap_registros_equipe):     exibe registros de ação e alterar status
+  - Matriz Tela × Ação ("Ver", "Inserir", "Alterar", "Excluir", "Salvar"), com perfis
+    predefinidos (Acesso Total / Apenas Relatórios / Apenas Configurar Tabelas) ou
+    combinação livre ("Personalizado"). Armazenada como string "Tela::Ação;..." no
+    campo Permissao do usuário (ou o nome do perfil quando coincide com um preset).
+  - "Tela::Ver" controla se o menu correspondente aparece na navegação
+  - CAP_EDITAR          ("Notificações::Alterar"): exibe botão de edição de registros
+  - CAP_INSERIR_REGISTRO ("Notificações::Inserir"): exibe registros da equipe e permite inserir
+  - CAP_SALVAR_STATUS    ("Notificações::Salvar"):  permite alterar o status da notificação
 """
 
 import streamlit as st
@@ -154,7 +159,6 @@ COLUNAS_DADOS = [
 ]
 
 STATUS_OPTS    = ["Novo", "Investigar", "Notificar", "Em Análise", "Pendência", "Concluído", "Anulado"]
-PERMISSOES     = ["Acesso Total", "Apenas Relatórios", "Apenas Configurar Tabelas"]
 MENU_OPTIONS   = [
     ("📊 Dashboard", "Dashboard"),
     ("📋 Notificações", "Notificações"),
@@ -165,60 +169,167 @@ MENU_OPTIONS   = [
 ]
 MENU_LABELS    = [label for _, label in MENU_OPTIONS]
 
-# Capacidades especiais (não são menus, mas ações dentro das páginas)
-CAP_EDITAR    = "cap_editar_notificacoes"
-CAP_REGISTROS = "cap_registros_equipe"
+# ─── Matriz de permissões: Tela × Ação ────────────────────────────────────────
+# Cada permissão é armazenada como token "Tela::Ação" (ex: "Notificações::Alterar").
+ACOES_PERM = ["Ver", "Inserir", "Alterar", "Excluir", "Salvar"]
+
+APLICAVEL_PERM = {
+    "Dashboard":         ["Ver"],
+    "Notificações":      ["Ver", "Inserir", "Alterar", "Excluir", "Salvar"],
+    "Relatórios":        ["Ver", "Salvar"],
+    "Exportar Dados":    ["Ver", "Salvar"],
+    "Configurar Menus":  ["Ver", "Inserir", "Alterar", "Excluir", "Salvar"],
+    "Usuários":          ["Ver", "Inserir", "Alterar", "Excluir", "Salvar"],
+}
+TELAS_PERM = MENU_LABELS
+
+
+def _tokens_tela(tela):
+    """Retorna todos os tokens 'Tela::Ação' aplicáveis a uma tela."""
+    return [f"{tela}::{acao}" for acao in APLICAVEL_PERM.get(tela, [])]
+
+
+def _tokens_perfil(mapa):
+    """Expande um mapa {Tela: [Ações]} em uma lista de tokens 'Tela::Ação'."""
+    tokens = []
+    for tela, acoes in mapa.items():
+        tokens += [f"{tela}::{acao}" for acao in acoes]
+    return tokens
+
 
 PRESET_PERMISSIONS = {
-    "Acesso Total": MENU_LABELS + [CAP_EDITAR, CAP_REGISTROS],
-    "Apenas Relatórios": ["Dashboard", "Notificações", "Relatórios", "Exportar Dados", CAP_REGISTROS],
-    "Apenas Configurar Tabelas": ["Configurar Menus", "Usuários"],
+    "Acesso Total": [tok for tela in TELAS_PERM for tok in _tokens_tela(tela)],
+    "Apenas Relatórios": _tokens_perfil({
+        "Dashboard": ["Ver"],
+        "Relatórios": ["Ver", "Salvar"],
+        "Exportar Dados": ["Ver", "Salvar"],
+    }),
+    "Apenas Configurar Tabelas": _tokens_perfil({
+        "Dashboard": ["Ver"],
+        "Configurar Menus": ["Ver", "Inserir", "Alterar", "Excluir", "Salvar"],
+    }),
 }
+PERM_LABELS = list(PRESET_PERMISSIONS.keys())
+
+# Capacidades especiais usadas dentro da aba Notificações
+CAP_EDITAR            = "Notificações::Alterar"
+CAP_INSERIR_REGISTRO  = "Notificações::Inserir"
+CAP_SALVAR_STATUS     = "Notificações::Salvar"
+CAP_EXCLUIR_NOTIF     = "Notificações::Excluir"
+
+# Tokens legados (formato anterior à matriz) — mantidos para migrar permissões
+# já salvas no banco sem exigir alteração manual dos usuários existentes.
+_LEGACY_CAP_EDITAR    = "cap_editar_notificacoes"
+_LEGACY_CAP_REGISTROS = "cap_registros_equipe"
+
+
+def _migrar_permissoes_legado(itens):
+    """
+    Converte uma lista de tokens no formato antigo (nomes de menu soltos +
+    capacidades cap_editar_notificacoes/cap_registros_equipe) para o novo
+    formato de tokens "Tela::Ação".
+    """
+    tokens = set()
+    for item in itens:
+        if item in MENU_LABELS:
+            tokens.add(f"{item}::Ver")
+        elif item == _LEGACY_CAP_EDITAR:
+            tokens.add(CAP_EDITAR)
+        elif item == _LEGACY_CAP_REGISTROS:
+            tokens.add(CAP_INSERIR_REGISTRO)
+            tokens.add(CAP_SALVAR_STATUS)
+    return tokens
+
 
 def parse_permissions(value):
     """
-    Converte o campo Permissao (string) em lista de permissões individuais.
+    Converte o campo Permissao (string) no conjunto de tokens "Tela::Ação" ativos.
 
     Aceita:
       - Strings predefinidas ("Acesso Total", etc.) → expande via PRESET_PERMISSIONS
-      - Strings semicolon-separated ("Dashboard;Notificações;cap_editar_notificacoes")
-      - Qualquer outro valor → lista vazia
+      - Strings semicolon-separated no formato novo ("Dashboard::Ver;Notificações::Alterar")
+      - Strings semicolon-separated no formato antigo (menus soltos + capacidades legadas)
+        → migradas automaticamente para o novo formato
+      - Qualquer outro valor → conjunto vazio
 
-    Retorna lista de strings com menus e/ou capacidades especiais.
+    Retorna um set de strings "Tela::Ação".
     """
     if value in PRESET_PERMISSIONS:
-        return PRESET_PERMISSIONS[value]
-    if isinstance(value, str):
-        return [item.strip() for item in value.split(";") if item.strip()]
-    return []
+        return set(PRESET_PERMISSIONS[value])
+    if not isinstance(value, str) or not value.strip():
+        return set()
+    itens = [item.strip() for item in value.split(";") if item.strip()]
+    if any("::" in item for item in itens):
+        return set(itens)
+    return _migrar_permissoes_legado(itens)
 
 
-def permissions_to_string(selected):
+def permissions_to_string(tokens):
     """
-    Converte uma lista de permissões de volta para string armazenável no banco.
+    Converte um conjunto/lista de tokens "Tela::Ação" de volta para string
+    armazenável no banco.
 
-    Se a lista contiver todos os menus E todas as capacidades especiais,
-    retorna a string compacta "Acesso Total". Caso contrário, junta com ";".
+    Se o conjunto coincidir exatamente com um dos perfis predefinidos, retorna
+    o nome compacto do perfil (ex: "Acesso Total"). Caso contrário, junta os
+    tokens com ";" (permissão "Personalizada").
 
     Parâmetros:
-      selected — lista de strings com menus e/ou capacidades
+      tokens — coleção de strings "Tela::Ação"
     """
-    if set(selected) == set(MENU_LABELS + [CAP_EDITAR, CAP_REGISTROS]):
-        return "Acesso Total"
-    return ";".join(selected)
+    tokens = set(tokens)
+    for nome, preset_tokens in PRESET_PERMISSIONS.items():
+        if tokens == set(preset_tokens):
+            return nome
+    return ";".join(sorted(tokens))
 
 
-def has_perm(perm_str, capability):
+def has_perm(perm_str, token):
     """
-    Verifica se uma string de permissão contém uma capacidade específica.
+    Verifica se uma string de permissão contém um token específico.
 
     Parâmetros:
-      perm_str   — string armazenada no banco (ex: "Acesso Total" ou "Dashboard;cap_editar_notificacoes")
-      capability — constante a verificar (ex: CAP_EDITAR, CAP_REGISTROS)
+      perm_str — string armazenada no banco (ex: "Acesso Total" ou "Dashboard::Ver;Notificações::Alterar")
+      token    — token a verificar (ex: CAP_EDITAR, "Dashboard::Ver")
 
-    Retorna True se a capacidade estiver presente, False caso contrário.
+    Retorna True se o token estiver presente, False caso contrário.
     """
-    return capability in parse_permissions(perm_str)
+    return token in parse_permissions(perm_str)
+
+
+def rotulo_permissao(perm_str):
+    """Retorna o nome do perfil predefinido correspondente, ou 'Personalizado'."""
+    tokens = parse_permissions(perm_str)
+    if not tokens:
+        return "Sem permissões"
+    for nome, preset_tokens in PRESET_PERMISSIONS.items():
+        if tokens == set(preset_tokens):
+            return nome
+    return "Personalizado"
+
+
+def _tokens_aplicaveis_todos():
+    """Lista todos os tokens 'Tela::Ação' aplicáveis, na ordem da matriz de permissões."""
+    return [f"{tela}::{acao}" for tela in TELAS_PERM for acao in APLICAVEL_PERM.get(tela, [])]
+
+
+def seed_checkbox_matriz(tokens_ativos):
+    """
+    Pré-popula st.session_state para os checkboxes da matriz de permissões
+    (chaves "chk_<token>") a partir de um conjunto de tokens ativos.
+
+    Necessário porque st.checkbox com `key` fixo ignora o parâmetro `value`
+    em reruns subsequentes — a única forma confiável de "resetar" a grade
+    (ex: ao trocar de perfil ou trocar de usuário em edição) é escrever
+    diretamente em st.session_state ANTES do próximo st.rerun().
+    """
+    ativos = set(tokens_ativos)
+    for tok in _tokens_aplicaveis_todos():
+        st.session_state[f"chk_{tok}"] = tok in ativos
+
+
+def matriz_atual_selecionada():
+    """Lê o estado atual da grade de permissões diretamente de st.session_state."""
+    return {tok for tok in _tokens_aplicaveis_todos() if st.session_state.get(f"chk_{tok}", False)}
 
 CAMPO_LABELS = {
     "Acoes_Imediatas":      "Ações Imediatas",
@@ -511,6 +622,57 @@ if not st.session_state["logado"]:
                                 st.error("🚫 Conta bloqueada por 5 minutos.")
                             else:
                                 st.error(f"❌ Usuário ou senha incorretos. Tentativas restantes: {restantes}")
+
+            # ── Recuperação de senha ──────────────────────────────────────
+            # Fluxo apenas informativo: registra a intenção na tela e orienta
+            # o usuário a aguardar contato do administrador. Nada é persistido.
+            col_esq_a, col_esq_b, col_esq_c = st.columns([1, 2, 1])
+            with col_esq_b:
+                if st.button("Esqueceu a senha?", use_container_width=True, key="btn_esqueci_senha"):
+                    st.session_state["mostrar_recuperacao"] = not st.session_state.get("mostrar_recuperacao", False)
+                    st.session_state["recuperacao_enviada"] = False
+                    st.session_state["erro_recuperacao"] = False
+
+            if st.session_state.get("mostrar_recuperacao"):
+                st.markdown("---")
+                if st.session_state.get("recuperacao_enviada"):
+                    st.success(
+                        "Solicitação registrada. O administrador do sistema foi avisado e "
+                        f"entrará em contato para redefinir a senha do usuário "
+                        f"**{st.session_state.get('recuperacao_usuario', '')}**."
+                    )
+                    if st.button("Voltar ao login", key="btn_voltar_login"):
+                        st.session_state["mostrar_recuperacao"] = False
+                        st.session_state["recuperacao_enviada"] = False
+                        st.rerun()
+                else:
+                    st.markdown("**Recuperar acesso**")
+                    st.caption(
+                        "Informe seu usuário. O Núcleo de Segurança do Paciente valida a "
+                        "solicitação e envia uma senha provisória."
+                    )
+                    rec_usuario = st.text_input(
+                        "Seu usuário",
+                        value=st.session_state.get("recuperacao_usuario", ""),
+                        key="rec_usuario_input"
+                    )
+                    if st.session_state.get("erro_recuperacao"):
+                        st.error("Informe o usuário para continuar.")
+                    col_rec1, col_rec2 = st.columns(2)
+                    with col_rec1:
+                        if st.button("Solicitar redefinição", use_container_width=True, key="btn_solicitar_rec"):
+                            if rec_usuario.strip():
+                                st.session_state["recuperacao_usuario"] = rec_usuario.strip()
+                                st.session_state["recuperacao_enviada"] = True
+                                st.session_state["erro_recuperacao"] = False
+                            else:
+                                st.session_state["erro_recuperacao"] = True
+                            st.rerun()
+                    with col_rec2:
+                        if st.button("Cancelar", use_container_width=True, key="btn_cancelar_rec"):
+                            st.session_state["mostrar_recuperacao"] = False
+                            st.session_state["erro_recuperacao"] = False
+                            st.rerun()
     st.stop()
 
 # ─── PAINEL AUTENTICADO ───────────────────────────────────────────────────────
@@ -534,12 +696,14 @@ perm = st.session_state["permissao"]
 menu_items = []
 user_perms = parse_permissions(perm)
 for display, label in MENU_OPTIONS:
-    if label in user_perms:
+    if f"{label}::Ver" in user_perms:
         menu_items.append(display)
 
 if not menu_items:
     st.warning("Seu usuário não possui menus autorizados. Contate o administrador.")
     st.stop()
+
+_perm_label = rotulo_permissao(perm)
 
 # Sidebar — apenas identificação do usuário (informativo, opcional no celular)
 with st.sidebar:
@@ -547,7 +711,7 @@ with st.sidebar:
     <div style="text-align:center; padding:16px 0 8px;">
       <span style="font-size:2rem;">👤</span>
       <p style="font-weight:700; font-size:1rem; margin:4px 0 2px;">{st.session_state['user']}</p>
-      <p style="font-size:0.76rem; opacity:0.7; margin:0;">{perm}</p>
+      <p style="font-size:0.76rem; opacity:0.7; margin:0;">{_perm_label}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -558,14 +722,20 @@ st.markdown(f"""
             display:flex; justify-content:space-between; align-items:center;">
   <span style="color:#fff; font-size:0.88rem; font-weight:600;">
     👤 {st.session_state['user']}
-    <span style="font-weight:400; opacity:0.75; font-size:0.78rem; margin-left:8px;">{perm}</span>
+    <span style="font-weight:400; opacity:0.75; font-size:0.78rem; margin-left:8px;">{_perm_label}</span>
   </span>
 </div>
 """, unsafe_allow_html=True)
 
+# Navegação disparada programaticamente (ex: clique em alerta ou na matriz do dashboard)
+if "_ir_para_menu" in st.session_state:
+    _alvo_menu = st.session_state.pop("_ir_para_menu")
+    if _alvo_menu in menu_items:
+        st.session_state["menu_modulo"] = _alvo_menu
+
 _nc_menu, _nc_sair = st.columns([6, 1])
 with _nc_menu:
-    menu = st.selectbox("Módulo", menu_items, label_visibility="collapsed")
+    menu = st.selectbox("Módulo", menu_items, label_visibility="collapsed", key="menu_modulo")
 with _nc_sair:
     if st.button("🚪 Sair", use_container_width=True):
         for k in ["logado", "user", "permissao"]:
@@ -589,6 +759,56 @@ if menu == "📊 Dashboard":
     # Converter datas
     df_dados["Data_Incidente"] = pd.to_datetime(df_dados["Data_Incidente"], errors="coerce")
     df_dados["Data_Registro"]  = pd.to_datetime(df_dados["Data_Registro"],  errors="coerce")
+
+    # ── Alertas: notificações novas aguardando triagem ─────────────────────
+    # "Vistas" fica apenas na sessão do usuário — reflete o comportamento do
+    # protótipo, sem gravar nada no banco.
+    alertas_vistos = st.session_state.setdefault("alertas_vistos", set())
+    df_alertas = df_dados[
+        (df_dados["Status"].fillna("Novo") == "Novo") & (~df_dados["id"].isin(alertas_vistos))
+    ].sort_values("Data_Registro", ascending=False)
+
+    if not df_alertas.empty:
+        with st.container(border=True):
+            col_al1, col_al2 = st.columns([5, 2])
+            with col_al1:
+                st.markdown(f"🔔 **{len(df_alertas)}** notificações novas aguardando triagem")
+            with col_al2:
+                if st.button("Marcar todas como vistas", use_container_width=True, key="btn_dispensar_todos_alertas"):
+                    st.session_state["alertas_vistos"] = alertas_vistos | set(df_alertas["id"].tolist())
+                    st.rerun()
+
+            for _, arow in df_alertas.iterrows():
+                a_id = arow.get("id")
+                titulo = str(arow.get("Categoria_Incidente", "—"))
+                if arow.get("Subcategoria"):
+                    titulo += f" — {arow.get('Subcategoria')}"
+                meta = (
+                    f"{str(arow.get('Data_Incidente',''))[:10]} · {arow.get('Setor','—')} · "
+                    f"{arow.get('Gravidade','')} · registrada em {str(arow.get('Data_Registro',''))[:16]}"
+                )
+                ca1, ca2, ca3 = st.columns([5, 2, 1])
+                with ca1:
+                    st.markdown(
+                        f"**{titulo}**  \n"
+                        f"<span style='font-size:0.8rem;color:#5f7086'>{meta}</span>",
+                        unsafe_allow_html=True
+                    )
+                with ca2:
+                    if st.button("Abrir notificação", key=f"abrir_alerta_{a_id}", use_container_width=True):
+                        st.session_state["_ir_para_menu"] = "📋 Notificações"
+                        st.session_state["_nav_filtro"] = {
+                            "categoria": arow.get("Categoria_Incidente"),
+                            "gravidade": arow.get("Gravidade"),
+                            "status": "Todos",
+                        }
+                        st.session_state["_force_open_id"] = a_id
+                        st.session_state["alertas_vistos"] = alertas_vistos | {a_id}
+                        st.rerun()
+                with ca3:
+                    if st.button("Visto", key=f"visto_alerta_{a_id}", use_container_width=True):
+                        st.session_state["alertas_vistos"] = alertas_vistos | {a_id}
+                        st.rerun()
 
     # ── Filtro de período ──────────────────────────────────────────────────
     st.markdown('<div class="secao-titulo">🗓️ Filtro de Período</div>', unsafe_allow_html=True)
@@ -647,6 +867,66 @@ if menu == "📊 Dashboard":
     kc5.metric("Identificação", int(_ident.sum()))
     kc6.metric("Infecção",      int(_inf.sum()))
     kc7.metric("Outras",        int(_outras.sum()))
+
+    # ── Matriz: nível de incidente por categoria ────────────────────────────
+    # Cada célula é um botão que leva à aba Notificações já filtrada.
+    st.markdown('<div class="secao-titulo">🧩 Nível de Incidente por Categoria</div>', unsafe_allow_html=True)
+    st.caption("Clique em um número para abrir a aba Notificações já filtrada por aquela categoria e gravidade.")
+
+    _GRAV_BUCKETS = [
+        ("Near Miss", "Near"),
+        ("Sem Dano", "Sem Dano"),
+        ("Dano Leve", "Leve"),
+        ("Dano Moderado", "Moderado"),
+        ("Dano Grave", "Grave"),
+        ("Óbito", "Óbito"),
+    ]
+
+    def _valor_gravidade_real(serie, padrao):
+        for v in serie.dropna().unique().tolist():
+            if padrao.lower() in str(v).lower():
+                return v
+        return None
+
+    _cats_presentes = df_f["Categoria_Incidente"].dropna().value_counts().index.tolist()
+
+    if _cats_presentes:
+        _grid_ratio = [2.2] + [1] * len(_GRAV_BUCKETS) + [1]
+        _hcols = st.columns(_grid_ratio)
+        _hcols[0].markdown("**Categoria**")
+        for _i, (_nome_curto, _) in enumerate(_GRAV_BUCKETS):
+            _hcols[_i + 1].markdown(
+                f"<div style='text-align:center;font-size:0.72rem;font-weight:700;color:#0d47a1'>{_nome_curto}</div>",
+                unsafe_allow_html=True
+            )
+        _hcols[-1].markdown(
+            "<div style='text-align:center;font-size:0.72rem;font-weight:700;color:#0d47a1'>Total</div>",
+            unsafe_allow_html=True
+        )
+
+        for _cat in _cats_presentes:
+            _df_cat_row = df_f[df_f["Categoria_Incidente"] == _cat]
+            _rcols = st.columns(_grid_ratio)
+            _rcols[0].markdown(f"<div style='font-size:0.85rem;padding-top:6px'>{_cat}</div>", unsafe_allow_html=True)
+            for _i, (_nome_curto, _padrao) in enumerate(_GRAV_BUCKETS):
+                _qtd = int(_df_cat_row["Gravidade"].str.contains(_padrao, case=False, na=False).sum())
+                with _rcols[_i + 1]:
+                    if _qtd:
+                        if st.button(str(_qtd), key=f"mtx_{_cat}_{_nome_curto}", use_container_width=True):
+                            _grav_real = _valor_gravidade_real(_df_cat_row["Gravidade"], _padrao)
+                            st.session_state["_ir_para_menu"] = "📋 Notificações"
+                            st.session_state["_nav_filtro"] = {
+                                "categoria": _cat, "gravidade": _grav_real or "Todas", "status": "Todos"
+                            }
+                            st.rerun()
+                    else:
+                        st.markdown("<div style='text-align:center;color:#c2ccd7'>—</div>", unsafe_allow_html=True)
+            with _rcols[-1]:
+                _total_cat = len(_df_cat_row)
+                if st.button(str(_total_cat), key=f"mtx_total_{_cat}", use_container_width=True):
+                    st.session_state["_ir_para_menu"] = "📋 Notificações"
+                    st.session_state["_nav_filtro"] = {"categoria": _cat, "gravidade": "Todas", "status": "Todos"}
+                    st.rerun()
 
     st.markdown("---")
 
@@ -758,8 +1038,8 @@ if menu == "📊 Dashboard":
 #   - Dados completos do evento e paciente
 #   - Botão de impressão individual (gera HTML/PDF para download)
 #   - Formulário de edição (se CAP_EDITAR)
-#   - Registros de ação da equipe de segurança (se CAP_REGISTROS)
-#   - Alteração de status (se CAP_REGISTROS)
+#   - Registros de ação da equipe de segurança (se CAP_INSERIR_REGISTRO)
+#   - Alteração de status (se CAP_SALVAR_STATUS)
 # ══════════════════════════════════════════════════════════════════════════════
 elif menu == "📋 Notificações":
     st.title("📋 Gerenciamento de Notificações")
@@ -770,20 +1050,32 @@ elif menu == "📋 Notificações":
 
     df_dados["Data_Incidente"] = pd.to_datetime(df_dados["Data_Incidente"], errors="coerce")
 
+    # Navegação vinda dos alertas ou da matriz do Dashboard: pré-seleciona os
+    # filtros e guarda o id da notificação a abrir automaticamente.
+    _nav_filtro = st.session_state.pop("_nav_filtro", None)
+    _force_open_id = st.session_state.pop("_force_open_id", None)
+    if _nav_filtro:
+        if _nav_filtro.get("status"):
+            st.session_state["notif_f_status"] = _nav_filtro["status"]
+        if _nav_filtro.get("categoria"):
+            st.session_state["notif_f_cat"] = _nav_filtro["categoria"]
+        if _nav_filtro.get("gravidade"):
+            st.session_state["notif_f_grav"] = _nav_filtro["gravidade"]
+
     # Filtros
     st.markdown('<div class="secao-titulo">🔎 Filtros</div>', unsafe_allow_html=True)
     fc1, fc2, fc3, fc4 = st.columns(4)
     with fc1:
-        f_status = st.selectbox("Status", ["Todos"] + STATUS_OPTS)
+        f_status = st.selectbox("Status", ["Todos"] + STATUS_OPTS, key="notif_f_status")
     with fc2:
         cats = ["Todas"] + sorted(df_dados["Categoria_Incidente"].dropna().unique().tolist())
-        f_cat = st.selectbox("Categoria", cats)
+        f_cat = st.selectbox("Categoria", cats, key="notif_f_cat")
     with fc3:
         setos = ["Todos"] + sorted(df_dados["Setor"].dropna().unique().tolist())
-        f_set = st.selectbox("Setor", setos)
+        f_set = st.selectbox("Setor", setos, key="notif_f_set")
     with fc4:
         gravs = ["Todas"] + sorted(df_dados["Gravidade"].dropna().unique().tolist())
-        f_grav = st.selectbox("Gravidade", gravs)
+        f_grav = st.selectbox("Gravidade", gravs, key="notif_f_grav")
 
     df_view = df_dados.copy()
     if f_status != "Todos":
@@ -835,7 +1127,8 @@ elif menu == "📋 Notificações":
         </div>
         """, unsafe_allow_html=True)
 
-        with st.expander(f"Ver detalhes e gerenciar — Notificação #{idx+1}"):
+        _expandir = _force_open_id is not None and row.get("id") == _force_open_id
+        with st.expander(f"Ver detalhes e gerenciar — Notificação #{idx+1}", expanded=_expandir):
             d1, d2 = st.columns(2)
             with d1:
                 st.markdown("**Dados do Evento**")
@@ -967,7 +1260,7 @@ elif menu == "📋 Notificações":
                             st.rerun()
 
             # Registros de ação da equipe de segurança
-            if has_perm(perm, CAP_REGISTROS):
+            if has_perm(perm, CAP_INSERIR_REGISTRO):
                 st.markdown("---")
                 st.markdown("**📋 Registros da Equipe de Segurança**")
                 incidente_id = row.get("id")
@@ -1001,7 +1294,7 @@ elif menu == "📋 Notificações":
                         st.warning("Digite a descrição da ação.")
 
             # Gerenciamento de status
-            if has_perm(perm, CAP_REGISTROS):
+            if has_perm(perm, CAP_SALVAR_STATUS):
                 st.markdown("---")
                 col_s1, col_s2 = st.columns([2, 1])
                 with col_s1:
@@ -1442,148 +1735,216 @@ elif menu == "⚙️ Configurar Menus":
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: USUÁRIOS
 # Gerenciamento completo de usuários do painel de gestão:
-#   - Listar usuários cadastrados com permissão e status
-#   - Editar menus autorizados e permissões especiais (CAP_EDITAR, CAP_REGISTROS)
-#   - Ativar/desativar conta
-#   - Remover usuário (exceto o próprio usuário logado e o "admin")
-#   - Redefinir senha de qualquer usuário
-#   - Criar novo usuário com login, senha e permissões configuráveis
+#   - Listar usuários cadastrados com perfil de permissão e status
+#   - Cadastrar/editar usuário em um único formulário com matriz de permissões
+#     Tela × Ação (Ver/Inserir/Alterar/Excluir/Salvar), com perfis predefinidos
+#     ou combinação livre ("Personalizado")
+#   - Ativar/desativar conta (sem exclusão definitiva)
+#   - Redefinir senha integrado ao formulário de edição
 # ══════════════════════════════════════════════════════════════════════════════
 elif menu == "👥 Usuários":
     st.title("👥 Gerenciamento de Usuários")
 
-    u1, u2 = st.columns([3, 2])
+    st.markdown('<div class="secao-titulo">Usuários Cadastrados</div>', unsafe_allow_html=True)
+    col_ut1, col_ut2 = st.columns([5, 2])
+    with col_ut2:
+        if st.button("➕ Cadastrar novo usuário", use_container_width=True, key="btn_novo_usuario"):
+            st.session_state["modo_novo_usuario"] = True
+            st.session_state["usr_editando"] = None
+            st.session_state["nome_novo_usuario"] = ""
+            st.session_state["perm_perfil"] = PERM_LABELS[0]
+            st.session_state["sel_perfil_permissao"] = PERM_LABELS[0]
+            seed_checkbox_matriz(PRESET_PERMISSIONS[PERM_LABELS[0]])
+            st.rerun()
 
-    with u1:
-        st.subheader("Usuários Cadastrados")
-        df_show = df_usuarios[["Usuario", "Permissao", "Ativo", "Data_Criacao"]].copy()
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
+    hu1, hu2, hu3, hu4 = st.columns([2, 2, 1, 1.6])
+    hu1.markdown("**Usuário**")
+    hu2.markdown("**Permissão**")
+    hu3.markdown("**Ativo**")
+    hu4.markdown("**Ações**")
+    st.markdown('<hr style="margin:2px 0 10px;border-color:#e8edf5;">', unsafe_allow_html=True)
 
-        st.markdown("---")
-        st.subheader("✏️ Editar Usuário")
-        usuario_sel = st.selectbox("Usuário", df_usuarios["Usuario"].tolist(), key="usr_sel")
-        row_sel     = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
-        user_perms  = parse_permissions(row_sel["Permissao"])
-
-        col_pa, col_pb = st.columns(2)
-        with col_pa:
-            st.markdown("**Menus autorizados**")
-            selected_menus = st.multiselect(
-                "Menus",
-                MENU_LABELS,
-                default=[p for p in user_perms if p in MENU_LABELS],
-                key="menus_sel",
-                label_visibility="collapsed"
-            )
-        with col_pb:
-            st.markdown("**Permissões especiais**")
-            cap_editar_sel = st.checkbox(
-                "✏️ Editar Notificações",
-                value=has_perm(row_sel["Permissao"], CAP_EDITAR),
-                key="cap_editar_sel"
-            )
-            cap_reg_sel = st.checkbox(
-                "📋 Registros da Equipe de Segurança",
-                value=has_perm(row_sel["Permissao"], CAP_REGISTROS),
-                key="cap_reg_sel"
-            )
-            novo_ativo = st.checkbox("✅ Usuário Ativo", value=bool(row_sel["Ativo"]), key="novo_ativo")
-
-        col_pc, col_pd = st.columns(2)
-        with col_pc:
-            if st.button("💾 Salvar", type="primary", use_container_width=True):
-                sel_caps = []
-                if cap_editar_sel: sel_caps.append(CAP_EDITAR)
-                if cap_reg_sel:    sel_caps.append(CAP_REGISTROS)
-                row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
-                try:
-                    db.update_user(row_u["id"], {
-                        "Permissao": permissions_to_string(selected_menus + sel_caps),
-                        "Ativo": novo_ativo
-                    })
-                    st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Usuário atualizado com sucesso!"}
-                except Exception as e:
-                    st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {e}"}
-                st.rerun()
-        with col_pd:
-            if usuario_sel != st.session_state["user"] and usuario_sel != "admin":
-                if st.button("🗑️ Remover", use_container_width=True):
-                    row_u = df_usuarios[df_usuarios["Usuario"] == usuario_sel].iloc[0]
-                    try:
-                        db.delete_user(row_u["id"])
-                        st.session_state["_notif_banner"] = {"type": "success", "msg": "✅ Usuário removido com sucesso!"}
-                    except Exception as e:
-                        st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao remover usuário: {e}"}
+    for _, u in df_usuarios.iterrows():
+        ru1, ru2, ru3, ru4 = st.columns([2, 2, 1, 1.6])
+        ru1.write(u["Usuario"])
+        ru2.write(rotulo_permissao(u["Permissao"]))
+        ativo_u = bool(u["Ativo"])
+        ru3.write("Sim" if ativo_u else "Não")
+        with ru4:
+            cbtn1, cbtn2 = st.columns(2)
+            with cbtn1:
+                if st.button("Editar", key=f"editar_usr_{u['Usuario']}", use_container_width=True):
+                    st.session_state["usr_editando"] = u["Usuario"]
+                    st.session_state["modo_novo_usuario"] = False
+                    perfil_atual = rotulo_permissao(u["Permissao"])
+                    perfil_atual = perfil_atual if perfil_atual in PRESET_PERMISSIONS else "Personalizado"
+                    st.session_state["perm_perfil"] = perfil_atual
+                    st.session_state["sel_perfil_permissao"] = perfil_atual
+                    seed_checkbox_matriz(parse_permissions(u["Permissao"]))
                     st.rerun()
+            with cbtn2:
+                if u["Usuario"] != st.session_state["user"] and u["Usuario"] != "admin":
+                    rotulo_ativar = "Inativar" if ativo_u else "Reativar"
+                    if st.button(rotulo_ativar, key=f"toggle_ativo_{u['Usuario']}", use_container_width=True):
+                        try:
+                            db.update_user(u["id"], {"Ativo": not ativo_u})
+                            st.session_state["_notif_banner"] = {
+                                "type": "success",
+                                "msg": f"✅ Usuário {u['Usuario']} {'inativado' if ativo_u else 'reativado'}."
+                            }
+                        except Exception as e:
+                            st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro: {e}"}
+                        st.rerun()
+
+    # ── Formulário de cadastro/edição ───────────────────────────────────────
+    if st.session_state.get("usr_editando") or st.session_state.get("modo_novo_usuario"):
+        st.markdown("---")
+        modo_novo = st.session_state.get("modo_novo_usuario", False)
+        titulo_form = "Cadastrar novo usuário" if modo_novo else f"Editar usuário — {st.session_state.get('usr_editando')}"
+        st.markdown(f'<div class="secao-titulo">{titulo_form}</div>', unsafe_allow_html=True)
+
+        # Garante que toda a grade tenha estado inicializado (evita KeyError na
+        # primeira renderização). Widgets com key fixo (selectbox/checkbox) não
+        # podem ter seu st.session_state reescrito depois de já instanciados
+        # NESTA MESMA execução — por isso qualquer troca de perfil decidida
+        # depois desse ponto (grade manual, "Desmarcar tudo") é apenas
+        # agendada em "_perfil_pendente" e só é aplicada aqui, no topo da
+        # PRÓXIMA execução, antes dos widgets existirem.
+        _pendente = st.session_state.pop("_perfil_pendente", None)
+        if _pendente:
+            if _pendente["tokens"] is not None:
+                seed_checkbox_matriz(_pendente["tokens"])
+            st.session_state["perm_perfil"] = _pendente["label"]
+            st.session_state["sel_perfil_permissao"] = _pendente["label"]
+
+        for _tok in _tokens_aplicaveis_todos():
+            st.session_state.setdefault(f"chk_{_tok}", False)
+        st.session_state.setdefault("perm_perfil", PERM_LABELS[0])
+        st.session_state.setdefault("sel_perfil_permissao", st.session_state["perm_perfil"])
+
+        cf_a, cf_b, cf_c = st.columns(3)
+        nome_novo = None
+        with cf_a:
+            if modo_novo:
+                nome_novo = st.text_input(
+                    "Usuário", value=st.session_state.get("nome_novo_usuario", ""),
+                    key="input_nome_novo_usuario", placeholder="ex. a.souza"
+                )
+        with cf_b:
+            _perfil_atual = st.session_state["perm_perfil"]
+            _perfil_opcoes = PERM_LABELS + (["Personalizado"] if _perfil_atual == "Personalizado" else [])
+            perfil_sel = st.selectbox("Perfil de acesso", _perfil_opcoes, key="sel_perfil_permissao")
+            if perfil_sel != _perfil_atual:
+                st.session_state["perm_perfil"] = perfil_sel
+                if perfil_sel != "Personalizado":
+                    seed_checkbox_matriz(PRESET_PERMISSIONS[perfil_sel])
+                st.rerun()
+        with cf_c:
+            rotulo_senha = "Senha provisória" if modo_novo else "Redefinir senha"
+            placeholder_senha = "Mínimo 8 caracteres" if modo_novo else "Deixe vazio para manter"
+            senha_form = st.text_input(rotulo_senha, type="password", key="input_senha_usuario", placeholder=placeholder_senha)
 
         st.markdown("---")
-        st.subheader("🔑 Redefinir Senha de Usuário")
-        usr_troca = st.selectbox("Usuário", df_usuarios["Usuario"].tolist(), key="usr_troca")
-        nova_senha_admin = st.text_input("Nova Senha", type="password", key="nova_senha_admin")
-        if st.button("Redefinir Senha", use_container_width=True):
-            if nova_senha_admin.strip():
-                row_t = df_usuarios[df_usuarios["Usuario"] == usr_troca].iloc[0]
-                try:
-                    db.update_user(row_t["id"], {"Senha_Hash": hash_senha(nova_senha_admin)})
-                    st.session_state["_notif_banner"] = {"type": "success", "msg": f"✅ Senha de '{usr_troca}' redefinida com sucesso!"}
-                except Exception as e:
-                    st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao redefinir senha: {e}"}
+        col_pm1, col_pm2 = st.columns([5, 2])
+        with col_pm1:
+            st.markdown("**Permissões por tela e funcionalidade**")
+            st.caption("O perfil preenche a grade automaticamente. Qualquer ajuste manual muda o perfil para Personalizado.")
+        with col_pm2:
+            if st.button("Desmarcar tudo", key="btn_desmarcar_permissoes", use_container_width=True):
+                st.session_state["_perfil_pendente"] = {"label": "Personalizado", "tokens": set()}
                 st.rerun()
-            else:
-                st.warning("Digite a nova senha.")
 
-    with u2:
-        st.subheader("➕ Criar Novo Usuário")
-        with st.form("form_novo_usuario"):
-            n_user  = st.text_input("Login (sem espaços)")
-            n_senha = st.text_input("Senha", type="password")
-            n_conf  = st.text_input("Confirmar Senha", type="password")
-            st.markdown("**Menus autorizados**")
-            n_menus = st.multiselect("Menus", MENU_LABELS,
-                                     default=["Dashboard", "Notificações"],
-                                     label_visibility="collapsed")
-            st.markdown("**Permissões especiais**")
-            nc_editar    = st.checkbox("✏️ Editar Notificações", value=False)
-            nc_registros = st.checkbox("📋 Registros da Equipe de Segurança", value=False)
-            criar = st.form_submit_button("✅ Criar Usuário", use_container_width=True)
+        _grid_perm = [2.4] + [1] * len(ACOES_PERM)
+        _hh = st.columns(_grid_perm)
+        _hh[0].markdown("**Tela**")
+        for _i, _acao in enumerate(ACOES_PERM):
+            _hh[_i + 1].markdown(f"<div style='text-align:center;font-size:0.76rem;font-weight:700'>{_acao}</div>", unsafe_allow_html=True)
 
-            if criar:
-                if not n_user.strip() or not n_senha.strip():
-                    st.error("Preencha login e senha.")
-                elif " " in n_user:
-                    st.error("Login não pode conter espaços.")
-                elif n_senha != n_conf:
-                    st.error("As senhas não coincidem.")
-                elif (df_usuarios["Usuario"].str.lower() == n_user.strip().lower()).any():
-                    st.error("Este login já está em uso.")
-                elif len(n_senha) < 6:
-                    st.error("A senha deve ter ao menos 6 caracteres.")
-                elif not n_menus:
-                    st.error("Selecione ao menos um menu para o usuário.")
+        for tela in TELAS_PERM:
+            _rr = st.columns(_grid_perm)
+            _rr[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{tela}</div>", unsafe_allow_html=True)
+            for _i, acao in enumerate(ACOES_PERM):
+                token = f"{tela}::{acao}"
+                with _rr[_i + 1]:
+                    if acao in APLICAVEL_PERM.get(tela, []):
+                        st.checkbox(token, key=f"chk_{token}", label_visibility="collapsed")
+                    else:
+                        st.markdown("<div style='text-align:center;color:#c2ccd7'>—</div>", unsafe_allow_html=True)
+
+        # Se o ajuste manual na grade fez a seleção deixar de bater com o
+        # perfil mostrado no dropdown, recalcula e força a atualização do
+        # rótulo (inclui trocar para "Personalizado" quando aplicável).
+        _tokens_atuais = matriz_atual_selecionada()
+        _perfil_real = "Personalizado"
+        for _nome, _preset_tokens in PRESET_PERMISSIONS.items():
+            if _tokens_atuais == set(_preset_tokens):
+                _perfil_real = _nome
+                break
+        if _perfil_real != st.session_state["perm_perfil"]:
+            st.session_state["_perfil_pendente"] = {"label": _perfil_real, "tokens": None}
+            st.rerun()
+
+        st.markdown("---")
+        cbtn_save, cbtn_cancel = st.columns(2)
+        with cbtn_save:
+            _rotulo_salvar = "💾 Cadastrar usuário" if modo_novo else "💾 Salvar alterações"
+            if st.button(_rotulo_salvar, type="primary", use_container_width=True, key="btn_salvar_usuario"):
+                tokens_sel = list(matriz_atual_selecionada())
+                if modo_novo:
+                    nome_final = (nome_novo or "").strip()
+                    if not nome_final:
+                        st.warning("Informe o nome do usuário.")
+                    elif " " in nome_final:
+                        st.warning("Login não pode conter espaços.")
+                    elif (df_usuarios["Usuario"].str.lower() == nome_final.lower()).any():
+                        st.warning("Este login já está em uso.")
+                    elif not senha_form or len(senha_form) < 6:
+                        st.warning("Defina uma senha com ao menos 6 caracteres.")
+                    elif not tokens_sel:
+                        st.warning("Selecione ao menos uma permissão.")
+                    else:
+                        novo_usr = {
+                            "Usuario":      nome_final,
+                            "Senha_Hash":   hash_senha(senha_form),
+                            "Permissao":    permissions_to_string(tokens_sel),
+                            "Ativo":        True,
+                            "Data_Criacao": date.today().strftime("%Y-%m-%d"),
+                        }
+                        try:
+                            db.save_user(novo_usr)
+                            st.session_state["_notif_banner"] = {"type": "success", "msg": f"✅ Usuário '{nome_final}' cadastrado."}
+                        except Exception as e:
+                            st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao cadastrar: {e}"}
+                        st.session_state["modo_novo_usuario"] = False
+                        st.session_state["usr_editando"] = None
+                        st.rerun()
                 else:
-                    n_caps = []
-                    if nc_editar:    n_caps.append(CAP_EDITAR)
-                    if nc_registros: n_caps.append(CAP_REGISTROS)
-                    novo_usr = {
-                        "Usuario":      n_user.strip(),
-                        "Senha_Hash":   hash_senha(n_senha),
-                        "Permissao":    permissions_to_string(n_menus + n_caps),
-                        "Ativo":        True,
-                        "Data_Criacao": date.today().strftime("%Y-%m-%d"),
-                    }
-                    try:
-                        db.save_user(novo_usr)
-                        st.session_state["_notif_banner"] = {"type": "success", "msg": f"✅ Usuário '{n_user.strip()}' criado com sucesso!"}
-                    except Exception as e:
-                        st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao criar usuário: {e}"}
-                    st.rerun()
+                    if not tokens_sel:
+                        st.warning("Selecione ao menos uma permissão.")
+                    else:
+                        row_u = df_usuarios[df_usuarios["Usuario"] == st.session_state["usr_editando"]].iloc[0]
+                        campos = {"Permissao": permissions_to_string(tokens_sel)}
+                        _senha_valida = True
+                        if senha_form.strip():
+                            if len(senha_form.strip()) < 6:
+                                st.warning("A nova senha deve ter ao menos 6 caracteres.")
+                                _senha_valida = False
+                            else:
+                                campos["Senha_Hash"] = hash_senha(senha_form.strip())
+                        if _senha_valida:
+                            try:
+                                db.update_user(row_u["id"], campos)
+                                st.session_state["_notif_banner"] = {"type": "success", "msg": f"✅ Usuário {row_u['Usuario']} atualizado."}
+                            except Exception as e:
+                                st.session_state["_notif_banner"] = {"type": "error", "msg": f"❌ Erro ao salvar: {e}"}
+                            st.session_state["usr_editando"] = None
+                            st.rerun()
+        with cbtn_cancel:
+            if st.button("Cancelar", use_container_width=True, key="btn_cancelar_usuario"):
+                st.session_state["usr_editando"] = None
+                st.session_state["modo_novo_usuario"] = False
+                st.rerun()
 
-        st.markdown("---")
-        st.markdown("**ℹ️ Permissões Especiais**")
-        st.markdown("""
-        - **✏️ Editar Notificações**: permite abrir e salvar o formulário de edição de um registro
-        - **📋 Registros da Equipe**: permite visualizar, inserir e alterar o status das notificações
-        """)
-        st.markdown("---")
-        st.markdown("**🔑 Login Mestre do Sistema**")
-        st.info("O usuário `admin_master` tem acesso irrestrito e não aparece na lista de usuários. Use-o apenas para configuração inicial.")
+    st.markdown("---")
+    st.markdown("**🔑 Login Mestre do Sistema**")
+    st.info("O usuário `admin_master` tem acesso irrestrito e não aparece na lista de usuários. Use-o apenas para configuração inicial.")
