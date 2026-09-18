@@ -29,6 +29,8 @@ import altair as alt
 import hashlib
 import html as html_mod
 import json as _json_mod
+import base64
+import os
 from datetime import datetime, date, timedelta
 import io
 import db  # camada de acesso ao Supabase
@@ -142,6 +144,26 @@ div[data-testid="stFormSubmitButton"] > button {
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ─── Logo (embutido em base64 — evita depender de arquivos estáticos servidos) ─
+def _carregar_logo_b64():
+    """Lê logo.png do diretório do script e retorna a string base64, ou None se não encontrado."""
+    caminho = os.path.join(os.path.dirname(__file__), "..", "logo.png")
+    if not os.path.exists(caminho):
+        caminho = "logo.png"
+    if not os.path.exists(caminho):
+        return None
+    try:
+        with open(caminho, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return None
+
+_LOGO_B64 = _carregar_logo_b64()
+LOGO_IMG_TAG = (
+    f'<img src="data:image/png;base64,{_LOGO_B64}" alt="HGMF" style="height:__H__px; display:block" />'
+    if _LOGO_B64 else ""
+)
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
 try:
@@ -567,10 +589,13 @@ for k, v in {
 #   3. Tenta login normal consultando a tabela de usuários no Supabase
 #   4. Após 5 tentativas falhas, bloqueia por 5 minutos (armazenado na sessão)
 if not st.session_state["logado"]:
-    st.markdown("""
+    _logo_login = LOGO_IMG_TAG.replace("__H__", "52").replace(
+        'style="', 'style="margin:0 auto 12px; '
+    ) if LOGO_IMG_TAG else '<span style="font-size:2.8rem;">🔒</span>'
+    st.markdown(f"""
     <div style="max-width:400px; margin:60px auto 0 auto;">
       <div style="text-align:center; margin-bottom:28px;">
-        <span style="font-size:2.8rem;">🔒</span>
+        {_logo_login}
         <h2 style="margin:8px 0 4px; color:#0d47a1; font-weight:700;">Painel de Gestão</h2>
         <p style="color:#546e7a; font-size:0.88rem;">Hospital Geral Menandro de Faria<br>Núcleo de Segurança do Paciente</p>
       </div>
@@ -715,32 +740,91 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-# ── Barra de navegação — acessível em qualquer dispositivo ───────────────────
-st.markdown(f"""
-<div style="background:linear-gradient(135deg,#0d47a1,#1565c0);
-            border-radius:10px; padding:10px 18px; margin-bottom:12px;
-            display:flex; justify-content:space-between; align-items:center;">
-  <span style="color:#fff; font-size:0.88rem; font-weight:600;">
-    👤 {st.session_state['user']}
-    <span style="font-weight:400; opacity:0.75; font-size:0.78rem; margin-left:8px;">{_perm_label}</span>
-  </span>
-</div>
-""", unsafe_allow_html=True)
-
 # Navegação disparada programaticamente (ex: clique em alerta ou na matriz do dashboard)
 if "_ir_para_menu" in st.session_state:
     _alvo_menu = st.session_state.pop("_ir_para_menu")
     if _alvo_menu in menu_items:
         st.session_state["menu_modulo"] = _alvo_menu
+if st.session_state.get("menu_modulo") not in menu_items:
+    st.session_state["menu_modulo"] = menu_items[0]
 
-_nc_menu, _nc_sair = st.columns([6, 1])
-with _nc_menu:
-    menu = st.selectbox("Módulo", menu_items, label_visibility="collapsed", key="menu_modulo")
-with _nc_sair:
-    if st.button("🚪 Sair", use_container_width=True):
-        for k in ["logado", "user", "permissao"]:
-            st.session_state[k] = "" if k != "logado" else False
-        st.rerun()
+# ── Cabeçalho: logo/título + usuário/Sair, com abas de navegação embaixo ──────
+st.markdown("""
+<style>
+.st-key-painel-header {
+    background: linear-gradient(135deg,#082f66 0%,#0d47a1 60%,#1565c0 100%);
+    border-radius: 10px;
+    padding: 14px 20px 0;
+    margin-bottom: 14px;
+}
+.st-key-painel-header div[data-testid="stButton"] button {
+    background: rgba(255,255,255,0.12) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255,255,255,0.35) !important;
+    border-radius: 7px !important;
+}
+.st-key-painel-header div[data-testid="stButton"] button:hover {
+    background: rgba(255,255,255,0.22) !important;
+}
+.st-key-painel-tabs { margin-top: 10px; }
+.st-key-painel-tabs div[data-testid="stButton"] button {
+    background: transparent !important;
+    color: #d6e6fb !important;
+    border: none !important;
+    border-radius: 8px 8px 0 0 !important;
+    padding: 10px 6px !important;
+    white-space: nowrap !important;
+    font-size: 0.8rem !important;
+}
+.st-key-painel-tabs div[data-testid="stButton"] button:hover {
+    background: rgba(255,255,255,0.12) !important;
+    color: #fff !important;
+}
+.st-key-painel-tabs div[data-testid="stButton"] button[kind="primary"] {
+    background: #eef1f6 !important;
+    color: #0d47a1 !important;
+}
+.st-key-painel-tabs div[data-testid="stButton"] button[kind="primary"]:hover {
+    background: #eef1f6 !important;
+    color: #0d47a1 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+with st.container(key="painel-header"):
+    col_logo, col_titulo, col_user, col_sair = st.columns([0.6, 4, 2.4, 1])
+    with col_logo:
+        if LOGO_IMG_TAG:
+            st.markdown(LOGO_IMG_TAG.replace("__H__", "38"), unsafe_allow_html=True)
+    with col_titulo:
+        st.markdown(
+            '<div style="color:#fff; font-size:15px; font-weight:700; padding-top:2px">Painel de Gestão — HGMF</div>'
+            '<div style="color:#b9d3f4; font-size:12px">Núcleo de Segurança do Paciente</div>',
+            unsafe_allow_html=True
+        )
+    with col_user:
+        st.markdown(
+            f'<div style="text-align:right; color:#fff; font-size:13px; font-weight:600; padding-top:2px">{st.session_state["user"]}</div>'
+            f'<div style="text-align:right; color:#b9d3f4; font-size:11.5px">{_perm_label}</div>',
+            unsafe_allow_html=True
+        )
+    with col_sair:
+        if st.button("🚪 Sair", use_container_width=True, key="btn_sair"):
+            for k in ["logado", "user", "permissao"]:
+                st.session_state[k] = "" if k != "logado" else False
+            st.rerun()
+
+    with st.container(key="painel-tabs"):
+        tab_cols = st.columns(len(menu_items))
+        for _col, _item in zip(tab_cols, menu_items):
+            with _col:
+                _ativo = st.session_state["menu_modulo"] == _item
+                if st.button(_item, key=f"tab_{_item}", type=("primary" if _ativo else "secondary"), use_container_width=True):
+                    if not _ativo:
+                        st.session_state["menu_modulo"] = _item
+                        st.rerun()
+
+menu = st.session_state["menu_modulo"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA: DASHBOARD
