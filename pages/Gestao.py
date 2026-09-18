@@ -1947,26 +1947,86 @@ elif menu == "👥 Usuários":
             st.markdown("**Permissões por tela e funcionalidade**")
             st.caption("O perfil preenche a grade automaticamente. Qualquer ajuste manual muda o perfil para Personalizado.")
         with col_pm2:
-            if st.button("Desmarcar tudo", key="btn_desmarcar_permissoes", use_container_width=True):
-                st.session_state["_perfil_pendente"] = {"label": "Personalizado", "tokens": set()}
-                st.rerun()
+            st.markdown("""
+            <style>
+            .st-key-btn-desmarcar-permissoes div[data-testid="stButton"] { text-align:right; }
+            .st-key-btn-desmarcar-permissoes button {
+                background: none !important;
+                border: none !important;
+                box-shadow: none !important;
+                color: #0d47a1 !important;
+                font-size: 0.8rem !important;
+                padding: 0 !important;
+            }
+            .st-key-btn-desmarcar-permissoes button:hover { text-decoration: underline !important; }
+            </style>
+            """, unsafe_allow_html=True)
+            with st.container(key="btn-desmarcar-permissoes"):
+                if st.button("Desmarcar tudo", key="btn_desmarcar_permissoes"):
+                    st.session_state["_perfil_pendente"] = {"label": "Personalizado", "tokens": set()}
+                    st.rerun()
 
-        _grid_perm = [2.4] + [1] * len(ACOES_PERM)
-        _hh = st.columns(_grid_perm)
-        _hh[0].markdown("**Tela**")
-        for _i, _acao in enumerate(ACOES_PERM):
-            _hh[_i + 1].markdown(f"<div style='text-align:center;font-size:0.76rem;font-weight:700'>{_acao}</div>", unsafe_allow_html=True)
+        st.markdown("""
+        <style>
+        .st-key-perm-matrix {
+            border: 1px solid #e7edf5;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .st-key-perm-matrix-header {
+            background: #f4f8fd;
+            padding: 8px 0;
+        }
+        .st-key-perm-matrix-header [data-testid="stMarkdownContainer"] p {
+            font-size: 0.68rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            color: #0d47a1 !important;
+            margin: 0 !important;
+        }
+        .st-key-perm-matrix [class*="st-key-perm-row-"] {
+            border-top: 1px solid #e7edf5;
+            padding: 6px 0;
+        }
+        .st-key-perm-matrix [class*="st-key-perm-row-"] [data-testid="stMarkdownContainer"] p {
+            font-size: 0.85rem !important;
+            margin: 0 !important;
+        }
+        .st-key-perm-matrix div[data-testid="stCheckbox"] { display:flex; justify-content:center; }
+        /* O preenchimento marcado é pintado via background-color numa classe
+           atômica gerada pelo Streamlit (não uma CSS var nem accent-color),
+           então mira-se o estado real via aria-checked, estável entre versões. */
+        .st-key-perm-matrix label:has(input[aria-checked="true"]) > span {
+            background-color: #0d47a1 !important;
+            border-color: #0d47a1 !important;
+        }
+        .st-key-perm-matrix label:has(input[aria-checked="false"]) > span {
+            border-color: #cfd8e3 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-        for tela in TELAS_PERM:
-            _rr = st.columns(_grid_perm)
-            _rr[0].markdown(f"<div style='padding-top:6px;font-size:0.85rem'>{tela}</div>", unsafe_allow_html=True)
-            for _i, acao in enumerate(ACOES_PERM):
-                token = f"{tela}::{acao}"
-                with _rr[_i + 1]:
-                    if acao in APLICAVEL_PERM.get(tela, []):
-                        st.checkbox(token, key=f"chk_{token}", label_visibility="collapsed")
-                    else:
-                        st.markdown("<div style='text-align:center;color:#c2ccd7'>—</div>", unsafe_allow_html=True)
+        with st.container(key="perm-matrix"):
+            _grid_perm = [2.4] + [1] * len(ACOES_PERM)
+            with st.container(key="perm-matrix-header"):
+                _hh = st.columns(_grid_perm)
+                _hh[0].markdown("Tela")
+                for _i, _acao in enumerate(ACOES_PERM):
+                    _hh[_i + 1].markdown(f"<div style='text-align:center'>{_acao}</div>", unsafe_allow_html=True)
+
+            for _row_i, tela in enumerate(TELAS_PERM):
+                with st.container(key=f"perm-row-{_row_i}"):
+                    _rr = st.columns(_grid_perm)
+                    _rr[0].markdown(f"<div style='padding-top:6px'>{tela}</div>", unsafe_allow_html=True)
+                    for _i, acao in enumerate(ACOES_PERM):
+                        token = f"{tela}::{acao}"
+                        with _rr[_i + 1]:
+                            if acao in APLICAVEL_PERM.get(tela, []):
+                                st.checkbox(token, key=f"chk_{token}", label_visibility="collapsed")
+                            else:
+                                st.markdown("<div style='text-align:center;color:#c2ccd7;padding-top:6px'>—</div>", unsafe_allow_html=True)
 
         # Se o ajuste manual na grade fez a seleção deixar de bater com o
         # perfil mostrado no dropdown, recalcula e força a atualização do
