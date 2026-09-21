@@ -23,9 +23,10 @@ Sistema de permissões:
 
 Encaminhamento por e-mail:
   - Envia a notificação completa (todos os campos + histórico de registros da
-    equipe de segurança) via API da Resend (https://resend.com)
-  - Requer RESEND_API_KEY e RESEND_FROM_EMAIL configurados nos Secrets do
-    Streamlit (seção [resend]); sem isso, exibe aviso claro ao tentar enviar
+    equipe de segurança) via API da SendGrid (https://sendgrid.com), com
+    remetente único verificado (não exige domínio próprio)
+  - Requer SENDGRID_API_KEY e SENDGRID_FROM_EMAIL configurados nos Secrets do
+    Streamlit (seção [sendgrid]); sem isso, exibe aviso claro ao tentar enviar
 """
 
 import streamlit as st
@@ -180,20 +181,21 @@ try:
 except (KeyError, FileNotFoundError, AttributeError):
     SENHA_ADMIN_MESTRE = ""  # login mestre desabilitado se não configurado
 
-# Envio de e-mail (encaminhamento de notificação) via API da Resend.
-# Configurar em Secrets do Streamlit:
-#   [resend]
-#   api_key = "re_xxxxx"
-#   from_email = "Painel HGMF <notificacoes@seudominio.com>"   # domínio verificado na Resend
+# Envio de e-mail (encaminhamento de notificação) via API da SendGrid, com
+# remetente único verificado (Single Sender Verification — não exige domínio
+# próprio). Configurar em Secrets do Streamlit:
+#   [sendgrid]
+#   api_key = "SG.xxxxx"
+#   from_email = "notificacoes@seudominio.com"   # remetente verificado na SendGrid
 try:
-    RESEND_API_KEY = st.secrets["resend"]["api_key"]
+    SENDGRID_API_KEY = st.secrets["sendgrid"]["api_key"]
 except (KeyError, FileNotFoundError, AttributeError):
-    RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+    SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
 try:
-    RESEND_FROM_EMAIL = st.secrets["resend"]["from_email"]
+    SENDGRID_FROM_EMAIL = st.secrets["sendgrid"]["from_email"]
 except (KeyError, FileNotFoundError, AttributeError):
-    RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "")
-RESEND_CONFIGURADO = bool(RESEND_API_KEY and RESEND_FROM_EMAIL)
+    SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM_EMAIL", "")
+SENDGRID_CONFIGURADO = bool(SENDGRID_API_KEY and SENDGRID_FROM_EMAIL)
 
 COLUNAS_DADOS = [
     "id", "Data_Registro", "Data_Incidente", "Turno", "Setor",
@@ -728,35 +730,38 @@ def gerar_html_email_notificacao(row: dict, numero: int, df_registros: pd.DataFr
     return assunto, html_corpo
 
 
-def enviar_email_resend(destinatarios: list[str], cc: list[str], assunto: str, html_corpo: str) -> tuple[bool, str]:
+def enviar_email_sendgrid(destinatarios: list[str], cc: list[str], assunto: str, html_corpo: str) -> tuple[bool, str]:
     """
-    Envia o e-mail de encaminhamento via API da Resend (https://resend.com).
-    Requer RESEND_API_KEY e RESEND_FROM_EMAIL configurados nos Secrets do
-    Streamlit (seção [resend]). Retorna (sucesso, mensagem).
+    Envia o e-mail de encaminhamento via API da SendGrid (https://sendgrid.com),
+    usando um remetente único verificado (Single Sender Verification — não
+    exige domínio próprio). Requer SENDGRID_API_KEY e SENDGRID_FROM_EMAIL
+    configurados nos Secrets do Streamlit (seção [sendgrid]).
+    Retorna (sucesso, mensagem).
     """
-    if not RESEND_CONFIGURADO:
+    if not SENDGRID_CONFIGURADO:
         return False, (
             "Envio de e-mail não configurado. Peça ao administrador do sistema para "
-            "configurar resend.api_key e resend.from_email nos Secrets do Streamlit."
+            "configurar sendgrid.api_key e sendgrid.from_email nos Secrets do Streamlit."
         )
-    payload = {
-        "from": RESEND_FROM_EMAIL,
-        "to": destinatarios,
-        "subject": assunto,
-        "html": html_corpo,
-    }
+    personalizacao = {"to": [{"email": d} for d in destinatarios]}
     if cc:
-        payload["cc"] = cc
+        personalizacao["cc"] = [{"email": c} for c in cc]
+    payload = {
+        "personalizations": [personalizacao],
+        "from": {"email": SENDGRID_FROM_EMAIL, "name": "Painel de Gestão HGMF"},
+        "subject": assunto,
+        "content": [{"type": "text/html", "value": html_corpo}],
+    }
     try:
         req = urllib.request.Request(
-            "https://api.resend.com/emails",
+            "https://api.sendgrid.com/v3/mail/send",
             data=_json_mod.dumps(payload).encode("utf-8"),
             headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Authorization": f"Bearer {SENDGRID_API_KEY}",
                 "Content-Type": "application/json",
-                # Sem um User-Agent "normal", o WAF/Cloudflare da Resend bloqueia
-                # a requisição (HTTP 403, error code 1010) por reconhecer a
-                # assinatura padrão do urllib como tráfego automatizado.
+                # Sem um User-Agent "normal", APIs atrás de Cloudflare/WAF podem
+                # bloquear a requisição por reconhecer a assinatura padrão do
+                # urllib como tráfego automatizado.
                 "User-Agent": "PainelGestaoHGMF/1.0 (+https://streamlit.io)",
             },
             method="POST",
@@ -1694,7 +1699,7 @@ elif menu == "📋 Notificações":
                             elif not _dest_validos:
                                 st.warning("O campo 'Enviar para' não contém um e-mail válido.")
                             else:
-                                _ok, _msg = enviar_email_resend(_dest_validos, _cc_validos, _assunto, _corpo_email)
+                                _ok, _msg = enviar_email_sendgrid(_dest_validos, _cc_validos, _assunto, _corpo_email)
                                 if _ok:
                                     st.session_state["_notif_banner"] = {"type": "success", "msg": f"✅ {_msg}"}
                                     st.session_state[f"encaminhar_{idx}"] = False
