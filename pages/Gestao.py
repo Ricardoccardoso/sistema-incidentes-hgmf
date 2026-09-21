@@ -967,6 +967,7 @@ if menu == "📊 Dashboard":
 
     # ── Matriz: nível de incidente por categoria ────────────────────────────
     # Cada célula é um botão que leva à aba Notificações já filtrada.
+    # Fica lado a lado com o gráfico de gravidade para aproveitar a largura.
     st.markdown('<div class="secao-titulo">🧩 Nível de Incidente por Categoria</div>', unsafe_allow_html=True)
     st.caption("Clique em um número para abrir a aba Notificações já filtrada por aquela categoria e gravidade.")
 
@@ -987,54 +988,69 @@ if menu == "📊 Dashboard":
 
     _cats_presentes = df_f["Categoria_Incidente"].dropna().value_counts().index.tolist()
 
-    if _cats_presentes:
-        _grid_ratio = [2.2] + [1] * len(_GRAV_BUCKETS) + [1]
-        _hcols = st.columns(_grid_ratio)
-        _hcols[0].markdown("**Categoria**")
-        for _i, (_nome_curto, _) in enumerate(_GRAV_BUCKETS):
-            _hcols[_i + 1].markdown(
-                f"<div style='text-align:center;font-size:0.72rem;font-weight:700;color:#0d47a1'>{_nome_curto}</div>",
-                unsafe_allow_html=True
-            )
-        _hcols[-1].markdown(
-            "<div style='text-align:center;font-size:0.72rem;font-weight:700;color:#0d47a1'>Total</div>",
-            unsafe_allow_html=True
-        )
+    col_matriz, col_donut = st.columns([3, 1.1], gap="medium")
 
-        for _cat in _cats_presentes:
-            _df_cat_row = df_f[df_f["Categoria_Incidente"] == _cat]
-            _rcols = st.columns(_grid_ratio)
-            _rcols[0].markdown(f"<div style='font-size:0.85rem;padding-top:6px'>{_cat}</div>", unsafe_allow_html=True)
-            for _i, (_nome_curto, _padrao) in enumerate(_GRAV_BUCKETS):
-                _qtd = int(_df_cat_row["Gravidade"].str.contains(_padrao, case=False, na=False).sum())
-                with _rcols[_i + 1]:
-                    if _qtd:
-                        if st.button(str(_qtd), key=f"mtx_{_cat}_{_nome_curto}", use_container_width=True):
-                            _grav_real = _valor_gravidade_real(_df_cat_row["Gravidade"], _padrao)
+    with col_matriz:
+        if _cats_presentes:
+            st.markdown("""
+            <style>
+            .st-key-incid-matrix div[data-testid="stHorizontalBlock"] {
+                gap: 0.35rem;
+                margin-bottom: -0.9rem;
+            }
+            .st-key-incid-matrix div[data-testid="stButton"] button {
+                min-height: 1.6rem !important;
+                padding: 0 4px !important;
+                font-size: 0.72rem !important;
+                font-family: 'IBM Plex Mono', monospace;
+            }
+            .st-key-incid-matrix div[data-testid="stMarkdownContainer"] p { margin: 0 !important; }
+            </style>
+            """, unsafe_allow_html=True)
+
+            with st.container(key="incid-matrix"):
+                _grid_ratio = [2.8] + [0.7] * len(_GRAV_BUCKETS) + [0.7]
+                _hcols = st.columns(_grid_ratio, gap="small")
+                _hcols[0].markdown("**Categoria**")
+                for _i, (_nome_curto, _) in enumerate(_GRAV_BUCKETS):
+                    _hcols[_i + 1].markdown(
+                        f"<div style='text-align:center;font-size:0.66rem;font-weight:700;color:#0d47a1'>{_nome_curto}</div>",
+                        unsafe_allow_html=True
+                    )
+                _hcols[-1].markdown(
+                    "<div style='text-align:center;font-size:0.66rem;font-weight:700;color:#0d47a1'>Total</div>",
+                    unsafe_allow_html=True
+                )
+
+                for _cat in _cats_presentes:
+                    _df_cat_row = df_f[df_f["Categoria_Incidente"] == _cat]
+                    _rcols = st.columns(_grid_ratio, gap="small")
+                    _rcols[0].markdown(f"<div style='font-size:0.78rem;padding-top:5px'>{_cat}</div>", unsafe_allow_html=True)
+                    for _i, (_nome_curto, _padrao) in enumerate(_GRAV_BUCKETS):
+                        _qtd = int(_df_cat_row["Gravidade"].str.contains(_padrao, case=False, na=False).sum())
+                        with _rcols[_i + 1]:
+                            if _qtd:
+                                if st.button(str(_qtd), key=f"mtx_{_cat}_{_nome_curto}", use_container_width=True):
+                                    _grav_real = _valor_gravidade_real(_df_cat_row["Gravidade"], _padrao)
+                                    st.session_state["_ir_para_menu"] = "📋 Notificações"
+                                    st.session_state["_nav_filtro"] = {
+                                        "categoria": _cat, "gravidade": _grav_real or "Todas", "status": "Todos"
+                                    }
+                                    st.rerun()
+                            else:
+                                st.markdown("<div style='text-align:center;color:#c2ccd7;padding-top:5px'>—</div>", unsafe_allow_html=True)
+                    with _rcols[-1]:
+                        _total_cat = len(_df_cat_row)
+                        if st.button(str(_total_cat), key=f"mtx_total_{_cat}", use_container_width=True):
                             st.session_state["_ir_para_menu"] = "📋 Notificações"
-                            st.session_state["_nav_filtro"] = {
-                                "categoria": _cat, "gravidade": _grav_real or "Todas", "status": "Todos"
-                            }
+                            st.session_state["_nav_filtro"] = {"categoria": _cat, "gravidade": "Todas", "status": "Todos"}
                             st.rerun()
-                    else:
-                        st.markdown("<div style='text-align:center;color:#c2ccd7'>—</div>", unsafe_allow_html=True)
-            with _rcols[-1]:
-                _total_cat = len(_df_cat_row)
-                if st.button(str(_total_cat), key=f"mtx_total_{_cat}", use_container_width=True):
-                    st.session_state["_ir_para_menu"] = "📋 Notificações"
-                    st.session_state["_nav_filtro"] = {"categoria": _cat, "gravidade": "Todas", "status": "Todos"}
-                    st.rerun()
 
-    st.markdown("---")
-
-    # ── Gráficos linha 1 ──────────────────────────────────────────────────
-    g1, g2 = st.columns(2)
-
-    with g1:
-        st.subheader("Incidentes por Gravidade")
+    with col_donut:
+        st.markdown("**Incidentes por Gravidade**")
         df_grav = df_f["Gravidade"].value_counts().reset_index()
         df_grav.columns = ["Gravidade", "Qtd"]
-        chart_grav = alt.Chart(df_grav).mark_arc(innerRadius=55, outerRadius=110).encode(
+        chart_grav = alt.Chart(df_grav).mark_arc(innerRadius=45, outerRadius=90).encode(
             theta=alt.Theta("Qtd:Q"),
             color=alt.Color("Gravidade:N", scale=alt.Scale(
                 domain=["Near Miss (Quase Evento - não atingiu o paciente)",
@@ -1043,12 +1059,17 @@ if menu == "📊 Dashboard":
                         "Dano Moderado (lesão moderada/temporária)",
                         "Dano Grave (lesão grave/permanente)", "Óbito"],
                 range=["#7b1fa2", "#43a047", "#fdd835", "#ff8f00", "#e53935", "#b71c1c"]
-            )),
+            ), legend=alt.Legend(title=None, orient="bottom", symbolLimit=0, labelFontSize=9)),
             tooltip=["Gravidade", "Qtd"]
-        ).properties(height=280)
+        ).properties(height=260)
         st.altair_chart(chart_grav, use_container_width=True)
 
-    with g2:
+    st.markdown("---")
+
+    # ── Gráficos linha 1 ──────────────────────────────────────────────────
+    g1, g2 = st.columns(2)
+
+    with g1:
         st.subheader("Incidentes por Categoria")
         df_cat = df_f["Categoria_Incidente"].value_counts().reset_index()
         df_cat.columns = ["Categoria", "Qtd"]
@@ -1060,10 +1081,7 @@ if menu == "📊 Dashboard":
         ).properties(height=280)
         st.altair_chart(chart_cat, use_container_width=True)
 
-    # ── Gráficos linha 2 ──────────────────────────────────────────────────
-    g3, g4 = st.columns(2)
-
-    with g3:
+    with g2:
         st.subheader("Evolução Temporal (por semana)")
         df_tmp = df_f.copy()
         df_tmp["Semana"] = df_tmp["Data_Incidente"].dt.to_period("W").apply(lambda r: str(r.start_time.date()))
@@ -1072,10 +1090,13 @@ if menu == "📊 Dashboard":
             x=alt.X("Semana:O", title="Semana"),
             y=alt.Y("Qtd:Q",   title="Notificações"),
             tooltip=["Semana", "Qtd"]
-        ).properties(height=250)
+        ).properties(height=280)
         st.altair_chart(chart_sem, use_container_width=True)
 
-    with g4:
+    # ── Gráficos linha 2 ──────────────────────────────────────────────────
+    g3, g4 = st.columns(2)
+
+    with g3:
         st.subheader("Incidentes por Setor")
         df_set = df_f["Setor"].value_counts().reset_index()
         df_set.columns = ["Setor", "Qtd"]
@@ -1087,10 +1108,7 @@ if menu == "📊 Dashboard":
         ).properties(height=250)
         st.altair_chart(chart_set, use_container_width=True)
 
-    # ── Gráficos linha 3 ──────────────────────────────────────────────────
-    g5, g6 = st.columns(2)
-
-    with g5:
+    with g4:
         st.subheader("Distribuição por Turno")
         df_turno = df_f["Turno"].value_counts().reset_index()
         df_turno.columns = ["Turno", "Qtd"]
@@ -1099,24 +1117,24 @@ if menu == "📊 Dashboard":
             y=alt.Y("Qtd:Q",   title="Qtd"),
             color=alt.Color("Turno:N", legend=None),
             tooltip=["Turno", "Qtd"]
-        ).properties(height=220)
+        ).properties(height=250)
         st.altair_chart(chart_turno, use_container_width=True)
 
-    with g6:
-        st.subheader("Fatores Causadores Mais Frequentes")
-        if df_f["Fatores_Causadores"].notna().any():
-            fatores_todos = df_f["Fatores_Causadores"].dropna().str.split(", ").explode()
-            df_fat = fatores_todos.value_counts().head(8).reset_index()
-            df_fat.columns = ["Fator", "Qtd"]
-            chart_fat = alt.Chart(df_fat).mark_bar(cornerRadiusTopRight=4).encode(
-                x=alt.X("Qtd:Q"),
-                y=alt.Y("Fator:N", sort="-x"),
-                color=alt.value("#6a1b9a"),
-                tooltip=["Fator", "Qtd"]
-            ).properties(height=240)
-            st.altair_chart(chart_fat, use_container_width=True)
-        else:
-            st.info("Sem dados de fatores causadores.")
+    # ── Gráfico: fatores causadores ─────────────────────────────────────────
+    st.subheader("Fatores Causadores Mais Frequentes")
+    if df_f["Fatores_Causadores"].notna().any():
+        fatores_todos = df_f["Fatores_Causadores"].dropna().str.split(", ").explode()
+        df_fat = fatores_todos.value_counts().head(8).reset_index()
+        df_fat.columns = ["Fator", "Qtd"]
+        chart_fat = alt.Chart(df_fat).mark_bar(cornerRadiusTopRight=4).encode(
+            x=alt.X("Qtd:Q"),
+            y=alt.Y("Fator:N", sort="-x"),
+            color=alt.value("#6a1b9a"),
+            tooltip=["Fator", "Qtd"]
+        ).properties(height=240)
+        st.altair_chart(chart_fat, use_container_width=True)
+    else:
+        st.info("Sem dados de fatores causadores.")
 
     # ── Status das notificações ───────────────────────────────────────────
     if "Status" in df_f.columns:
