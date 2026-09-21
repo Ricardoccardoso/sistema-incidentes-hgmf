@@ -754,6 +754,10 @@ def enviar_email_resend(destinatarios: list[str], cc: list[str], assunto: str, h
             headers={
                 "Authorization": f"Bearer {RESEND_API_KEY}",
                 "Content-Type": "application/json",
+                # Sem um User-Agent "normal", o WAF/Cloudflare da Resend bloqueia
+                # a requisição (HTTP 403, error code 1010) por reconhecer a
+                # assinatura padrão do urllib como tráfego automatizado.
+                "User-Agent": "PainelGestaoHGMF/1.0 (+https://streamlit.io)",
             },
             method="POST",
         )
