@@ -429,6 +429,48 @@ def _cor_gravidade(g: str) -> str:
             return v
     return "semDano"  # padrão verde quando a gravidade não é reconhecida
 
+
+def _linha_critica_relatorio(row) -> bool:
+    """
+    Marca como crítica uma linha de relatório com dano grave/óbito ou status
+    de análise ainda pendente — usado para destacar visualmente essas linhas
+    nas tabelas de relatórios.
+    """
+    grav = str(row.get("Gravidade", ""))
+    status = str(row.get("Status", ""))
+    return bool(re.search("Grave|Óbito", grav)) or status in ("Pendência", "Investigar", "Novo", "Em Análise")
+
+
+def exibir_tabela_relatorio(df: pd.DataFrame, colunas: list[str] | None = None,
+                             msg_vazio: str = "Nenhum registro para este relatório no período selecionado.") -> None:
+    """
+    Exibe uma tabela de relatório padronizada: legenda de quantidade de
+    linhas, destaque em vermelho claro para linhas críticas (dano grave/óbito
+    ou análise pendente, quando a tabela tiver as colunas Gravidade/Status) e
+    mensagem amigável quando não há registros no período/filtro selecionado.
+    """
+    if df.empty:
+        st.info(msg_vazio)
+        return
+    df_show = df[colunas].copy() if colunas else df.copy()
+    st.caption(f"**{len(df_show)}** {'linha' if len(df_show) == 1 else 'linhas'}")
+    if "Gravidade" in df.columns or "Status" in df.columns:
+        # df_show compartilha o mesmo índice de df (só muda o subconjunto de
+        # colunas), então dá pra usar o índice original para alinhar o destaque.
+        criticas = df.apply(_linha_critica_relatorio, axis=1)
+        st.caption("🔴 Linha crítica: dano grave, óbito ou análise pendente")
+
+        def _destacar(_row):
+            return ["background-color:#fdf4f3" if criticas.loc[_row.name] else "" for _ in _row]
+
+        try:
+            st.dataframe(df_show.style.apply(_destacar, axis=1), use_container_width=True, hide_index=True)
+        except Exception:
+            st.dataframe(df_show, use_container_width=True, hide_index=True)
+    else:
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+
+
 # ─── Funções delegadas ao módulo db ──────────────────────────────────────────
 hash_senha  = db.hash_senha
 load_data   = db.load_data
@@ -1745,21 +1787,68 @@ elif menu == "📈 Relatórios":
         "Sugestões de Melhoria Coletadas",
     ])
 
+    # ── Filtro de período e setor — aplicado a todos os relatórios ─────────
+    # Widgets com key fixo não podem ter seu session_state reescrito depois de
+    # já instanciados NESTA MESMA execução — por isso o botão "Ano corrente
+    # até hoje" apenas agenda a troca, aplicada aqui no topo antes dos
+    # date_input existirem nesta execução (mesmo padrão usado na matriz de
+    # permissões da aba Usuários).
+    _rel_periodo_pendente = st.session_state.pop("_rel_periodo_pendente", None)
+    if _rel_periodo_pendente:
+        st.session_state["rel_de"] = _rel_periodo_pendente["de"]
+        st.session_state["rel_ate"] = _rel_periodo_pendente["ate"]
+
+    st.markdown('<div class="secao-titulo">🗓️ Filtro de Período</div>', unsafe_allow_html=True)
+    cr1, cr2, cr3 = st.columns([2, 2, 2])
+    with cr1:
+        rel_de = st.date_input("De", value=date(date.today().year, 1, 1), format="DD/MM/YYYY", key="rel_de")
+    with cr2:
+        rel_ate = st.date_input("Até", value=date.today(), format="DD/MM/YYYY", key="rel_ate")
+    with cr3:
+        rel_setor = st.selectbox(
+            "Setor", ["Todos"] + sorted(df_dados["Setor"].dropna().unique().tolist()), key="rel_setor"
+        )
+
+    _sem_data_rel = df_dados["Data_Incidente"].isna()
+    _no_periodo_rel = (
+        (df_dados["Data_Incidente"] >= pd.to_datetime(rel_de)) &
+        (df_dados["Data_Incidente"] <= pd.to_datetime(rel_ate))
+    )
+    df_dados = df_dados[_sem_data_rel | _no_periodo_rel].copy()
+    if rel_setor != "Todos":
+        df_dados = df_dados[df_dados["Setor"] == rel_setor]
+
+    col_per1, col_per2 = st.columns([5, 2])
+    with col_per1:
+        st.caption(
+            f"Período: **{rel_de.strftime('%d/%m/%Y')}** a **{rel_ate.strftime('%d/%m/%Y')}** · "
+            f"**{len(df_dados)}** notificações no filtro"
+        )
+    with col_per2:
+        if st.button("Ano corrente até hoje", key="rel_periodo_padrao"):
+            st.session_state["_rel_periodo_pendente"] = {
+                "de": date(date.today().year, 1, 1), "ate": date.today()
+            }
+            st.rerun()
+
     st.markdown("---")
 
     if tipo_rel == "Resumo Mensal por Categoria":
         df_dados["Mes"] = df_dados["Data_Incidente"].dt.to_period("M").astype(str)
         df_pivot = df_dados.groupby(["Mes", "Categoria_Incidente"]).size().unstack(fill_value=0)
         st.subheader("Notificações por Mês e Categoria")
-        st.dataframe(df_pivot, use_container_width=True)
-        df_melt = df_dados.groupby(["Mes", "Categoria_Incidente"]).size().reset_index(name="Qtd")
-        chart = alt.Chart(df_melt).mark_bar().encode(
-            x=alt.X("Mes:O"),
-            y=alt.Y("Qtd:Q"),
-            color=alt.Color("Categoria_Incidente:N"),
-            tooltip=["Mes", "Categoria_Incidente", "Qtd"]
-        ).properties(height=320)
-        st.altair_chart(chart, use_container_width=True)
+        if df_pivot.empty:
+            st.info("Nenhum registro para este relatório no período selecionado.")
+        else:
+            st.dataframe(df_pivot, use_container_width=True)
+            df_melt = df_dados.groupby(["Mes", "Categoria_Incidente"]).size().reset_index(name="Qtd")
+            chart = alt.Chart(df_melt).mark_bar().encode(
+                x=alt.X("Mes:O"),
+                y=alt.Y("Qtd:Q"),
+                color=alt.Color("Categoria_Incidente:N"),
+                tooltip=["Mes", "Categoria_Incidente", "Qtd"]
+            ).properties(height=320)
+            st.altair_chart(chart, use_container_width=True)
 
     elif tipo_rel == "Ranking de Setores com Mais Incidentes":
         df_rank = df_dados.groupby("Setor").agg(
@@ -1767,14 +1856,15 @@ elif menu == "📈 Relatórios":
             Graves=("Gravidade", lambda x: x.str.contains("Grave|Óbito", na=False).sum()),
             NearMiss=("Gravidade", lambda x: x.str.contains("Near", na=False).sum()),
         ).sort_values("Total", ascending=False).reset_index()
-        st.dataframe(df_rank, use_container_width=True, hide_index=True)
-        chart = alt.Chart(df_rank).mark_bar(cornerRadiusTopRight=5).encode(
-            x=alt.X("Total:Q"),
-            y=alt.Y("Setor:N", sort="-x"),
-            color=alt.value("#1565c0"),
-            tooltip=["Setor", "Total", "Graves", "NearMiss"]
-        ).properties(height=350)
-        st.altair_chart(chart, use_container_width=True)
+        exibir_tabela_relatorio(df_rank)
+        if not df_rank.empty:
+            chart = alt.Chart(df_rank).mark_bar(cornerRadiusTopRight=5).encode(
+                x=alt.X("Total:Q"),
+                y=alt.Y("Setor:N", sort="-x"),
+                color=alt.value("#1565c0"),
+                tooltip=["Setor", "Total", "Graves", "NearMiss"]
+            ).properties(height=350)
+            st.altair_chart(chart, use_container_width=True)
 
     elif tipo_rel == "Análise de Near Miss":
         df_nm = df_dados[df_dados["Gravidade"].str.contains("Near", na=False)].copy()
@@ -1788,8 +1878,9 @@ elif menu == "📈 Relatórios":
                 tooltip=["Setor", "Qtd"]
             ).properties(height=260)
             st.altair_chart(chart, use_container_width=True)
-            st.dataframe(df_nm[["Data_Incidente","Setor","Categoria_Incidente","Fatores_Causadores","Descricao"]],
-                         use_container_width=True, hide_index=True)
+        exibir_tabela_relatorio(
+            df_nm, colunas=["Data_Incidente", "Setor", "Categoria_Incidente", "Fatores_Causadores", "Descricao"]
+        )
 
     elif tipo_rel == "Incidentes com Dano Grave ou Óbito":
         df_gr = df_dados[df_dados["Gravidade"].str.contains("Grave|Óbito", na=False, regex=True)].copy()
@@ -1814,16 +1905,17 @@ elif menu == "📈 Relatórios":
                     tooltip=["Categoria", "Qtd"]
                 ).properties(height=260)
                 st.altair_chart(chart2, use_container_width=True)
-            st.dataframe(df_gr[["Data_Incidente","Setor","Categoria_Incidente","Gravidade",
-                                  "Nome_Paciente","Data_Nascimento","Descricao","Relator"]],
-                         use_container_width=True, hide_index=True)
+        exibir_tabela_relatorio(df_gr, colunas=[
+            "Data_Incidente", "Setor", "Categoria_Incidente", "Gravidade",
+            "Nome_Paciente", "Data_Nascimento", "Descricao", "Relator"
+        ])
 
     elif tipo_rel == "Notificações Pendentes de Análise":
-        df_pend = df_dados[df_dados["Status"].isin(["Novo", "Em Análise"])].copy()
+        df_pend = df_dados[df_dados["Status"].isin(["Novo", "Investigar", "Pendência", "Em Análise"])].copy()
         st.metric("Pendentes de Análise", len(df_pend))
-        if not df_pend.empty:
-            st.dataframe(df_pend[["Data_Registro","Data_Incidente","Setor","Categoria_Incidente","Gravidade","Status"]],
-                         use_container_width=True, hide_index=True)
+        exibir_tabela_relatorio(df_pend, colunas=[
+            "Data_Registro", "Data_Incidente", "Setor", "Categoria_Incidente", "Gravidade", "Status"
+        ])
 
     elif tipo_rel == "Análise de LPP (Lesão por Pressão)":
         df_lpp = df_dados[df_dados["Categoria_Incidente"].str.contains("Pressão|LPP", na=False)].copy()
@@ -1837,6 +1929,8 @@ elif menu == "📈 Relatórios":
                 tooltip=["Estágio","Qtd"]
             ).properties(height=250)
             st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("Nenhum registro para este relatório no período selecionado.")
 
     elif tipo_rel == "Análise de Quedas":
         df_q = df_dados[df_dados["Categoria_Incidente"].str.contains("Queda", na=False)].copy()
@@ -1863,6 +1957,8 @@ elif menu == "📈 Relatórios":
                 ).properties(height=240)
                 st.altair_chart(chart_q2, use_container_width=True)
                 st.dataframe(df_queda_set, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum registro para este relatório no período selecionado.")
 
     elif tipo_rel == "Análise Medicamentosa":
         df_med = df_dados[df_dados["Categoria_Incidente"].str.contains("Medic|Medicament", na=False)].copy()
@@ -1887,14 +1983,16 @@ elif menu == "📈 Relatórios":
                     tooltip=["Setor", "Qtd"]
                 ).properties(height=240)
                 st.altair_chart(chart_med2, use_container_width=True)
-            st.dataframe(df_med[["Data_Incidente","Setor","Subcategoria","Medicamento_Envolvido",
-                                   "Gravidade","Descricao"]],
-                         use_container_width=True, hide_index=True)
+        exibir_tabela_relatorio(df_med, colunas=[
+            "Data_Incidente", "Setor", "Subcategoria", "Medicamento_Envolvido", "Gravidade", "Descricao"
+        ])
 
     elif tipo_rel == "Sugestões de Melhoria Coletadas":
         df_sug = df_dados[df_dados["Sugestao_Melhoria"].notna() &
                           (df_dados["Sugestao_Melhoria"].str.strip() != "")].copy()
         st.metric("Sugestões Recebidas", len(df_sug))
+        if df_sug.empty:
+            st.info("Nenhum registro para este relatório no período selecionado.")
         for _, r in df_sug.iterrows():
             st.markdown(f"""
             <div style="background:#f3f8ff; border-left:3px solid #1976d2; border-radius:8px;
