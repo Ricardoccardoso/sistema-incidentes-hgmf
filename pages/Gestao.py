@@ -430,45 +430,19 @@ def _cor_gravidade(g: str) -> str:
     return "semDano"  # padrão verde quando a gravidade não é reconhecida
 
 
-def _linha_critica_relatorio(row) -> bool:
-    """
-    Marca como crítica uma linha de relatório com dano grave/óbito ou status
-    de análise ainda pendente — usado para destacar visualmente essas linhas
-    nas tabelas de relatórios.
-    """
-    grav = str(row.get("Gravidade", ""))
-    status = str(row.get("Status", ""))
-    return bool(re.search("Grave|Óbito", grav)) or status in ("Pendência", "Investigar", "Novo", "Em Análise")
-
-
 def exibir_tabela_relatorio(df: pd.DataFrame, colunas: list[str] | None = None,
                              msg_vazio: str = "Nenhum registro para este relatório no período selecionado.") -> None:
     """
     Exibe uma tabela de relatório padronizada: legenda de quantidade de
-    linhas, destaque em vermelho claro para linhas críticas (dano grave/óbito
-    ou análise pendente, quando a tabela tiver as colunas Gravidade/Status) e
-    mensagem amigável quando não há registros no período/filtro selecionado.
+    linhas e mensagem amigável quando não há registros no período/filtro
+    selecionado.
     """
     if df.empty:
         st.info(msg_vazio)
         return
     df_show = df[colunas].copy() if colunas else df.copy()
     st.caption(f"**{len(df_show)}** {'linha' if len(df_show) == 1 else 'linhas'}")
-    if "Gravidade" in df.columns or "Status" in df.columns:
-        # df_show compartilha o mesmo índice de df (só muda o subconjunto de
-        # colunas), então dá pra usar o índice original para alinhar o destaque.
-        criticas = df.apply(_linha_critica_relatorio, axis=1)
-        st.caption("🔴 Linha crítica: dano grave, óbito ou análise pendente")
-
-        def _destacar(_row):
-            return ["background-color:#fdf4f3" if criticas.loc[_row.name] else "" for _ in _row]
-
-        try:
-            st.dataframe(df_show.style.apply(_destacar, axis=1), use_container_width=True, hide_index=True)
-        except Exception:
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
-    else:
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
+    st.dataframe(df_show, use_container_width=True, hide_index=True)
 
 
 # ─── Funções delegadas ao módulo db ──────────────────────────────────────────
