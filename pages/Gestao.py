@@ -29,6 +29,8 @@ Encaminhamento por e-mail:
     Streamlit (seção [sendgrid]); sem isso, exibe aviso claro ao tentar enviar
 """
 
+import os
+
 import streamlit as st
 import db  # camada de acesso ao Supabase
 
@@ -36,12 +38,14 @@ from rotinas.constantes import MENU_OPTIONS
 from rotinas.permissoes import parse_permissions, rotulo_permissao
 from rotinas.autenticacao import tela_login
 from rotinas import layout
-from rotinas.layout import LOGO_IMG_TAG
+from rotinas.layout import ICON_IMG_TAG
 from telas import dashboard, notificacoes, relatorios, exportar, configurar_menus, usuarios
 
+_favicon_path = os.path.join(os.path.dirname(__file__), "..", "assets", "notificare_icone.png")
+
 st.set_page_config(
-    page_title="Painel de Gestão — HGMF",
-    page_icon="🔒",
+    page_title="NotifiCare — HGMF",
+    page_icon=_favicon_path if os.path.exists(_favicon_path) else "🔔",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -65,7 +69,7 @@ for k, v in {
 
 # ─── TELA DE LOGIN ────────────────────────────────────────────────────────────
 if not st.session_state["logado"]:
-    tela_login(LOGO_IMG_TAG)
+    tela_login(ICON_IMG_TAG)
 
 # ─── PAINEL AUTENTICADO ───────────────────────────────────────────────────────
 # A partir daqui o usuário está logado.

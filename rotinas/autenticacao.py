@@ -37,8 +37,8 @@ def tela_login(logo_img_tag: str) -> None:
     <div style="max-width:400px; margin:60px auto 0 auto;">
       <div style="text-align:center; margin-bottom:28px;">
         {_logo_login}
-        <h2 style="margin:8px 0 4px; color:#0d47a1; font-weight:700;">Painel de Gestão</h2>
-        <p style="color:#546e7a; font-size:0.88rem;">Hospital Geral Menandro de Faria<br>Núcleo de Segurança do Paciente</p>
+        <h2 style="margin:8px 0 4px; color:#0d47a1; font-weight:800; letter-spacing:0.4px;">NOTIFICARE</h2>
+        <p style="color:#546e7a; font-size:0.88rem;">Sistema Integrado de Segurança do Paciente<br>Hospital Geral Menandro de Faria</p>
       </div>
     </div>
     """, unsafe_allow_html=True)

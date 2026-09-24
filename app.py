@@ -24,9 +24,11 @@ from version import __version__
 
 # ─── Configuração da página ───────────────────────────────────────────────────
 # layout="centered" limita a largura para melhor legibilidade do formulário
+_favicon_path = os.path.join(os.path.dirname(__file__), "assets", "notificare_icone.png")
+
 st.set_page_config(
-    page_title="Notificação de Incidente - HGMF",
-    page_icon="🏥",
+    page_title="NotifiCare — HGMF",
+    page_icon=_favicon_path if os.path.exists(_favicon_path) else "🔔",
     layout="centered"
 )
 
@@ -151,38 +153,34 @@ def ordenar_gravidade(opcoes):
 
 
 # ─── Cabeçalho com logo ───────────────────────────────────────────────────────
-# Tenta carregar o logo.png do diretório do script; se não encontrar, exibe
-# apenas texto. Isso evita erros em ambientes de deploy que alteram o cwd.
-logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
-if not os.path.exists(logo_path):
-    logo_path = "logo.png"
-
-if os.path.exists(logo_path):
+# Tenta carregar o ícone do NotifiCare; se não encontrar, exibe apenas texto.
+# Isso evita erros em ambientes de deploy que alteram o cwd.
+if os.path.exists(_favicon_path):
     try:
-        with open(logo_path, "rb") as f:
+        with open(_favicon_path, "rb") as f:
             b = f.read()
         b64 = base64.b64encode(b).decode()
         img_tag = f'<img src="data:image/png;base64,{b64}" style="height:76px; display:block; margin:0 auto 8px;" />'
         st.markdown(f"""
         <div class="cabecalho">
             {img_tag}
-            <h1 style="margin:6px 0 0; font-size:1.25rem">Hospital Geral Menandro de Faria</h1>
-            <p style="margin:0; color:#bbdefb">Núcleo de Segurança do Paciente — Notificação de Incidente</p>
+            <h1 style="margin:6px 0 0; font-size:1.4rem; font-weight:800; letter-spacing:0.4px">NOTIFICARE</h1>
+            <p style="margin:0; color:#bbdefb">Sistema Integrado de Segurança do Paciente — HGMF</p>
         </div>
         """, unsafe_allow_html=True)
     except Exception:
         # Fallback sem imagem caso a leitura do arquivo falhe
         st.markdown("""
         <div class="cabecalho">
-            <h1>🏥 Hospital Geral Menandro de Faria</h1>
-            <p>Núcleo de Segurança do Paciente — Notificação de Incidente</p>
+            <h1>🔔 NOTIFICARE</h1>
+            <p>Sistema Integrado de Segurança do Paciente — HGMF</p>
         </div>
         """, unsafe_allow_html=True)
 else:
     st.markdown("""
     <div class="cabecalho">
-        <h1>🏥 Hospital Geral Menandro de Faria</h1>
-        <p>Núcleo de Segurança do Paciente — Notificação de Incidente</p>
+        <h1>🔔 NOTIFICARE</h1>
+        <p>Sistema Integrado de Segurança do Paciente — HGMF</p>
     </div>
     """, unsafe_allow_html=True)
 

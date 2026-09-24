@@ -8,11 +8,11 @@ import os
 import streamlit as st
 
 
-def _carregar_logo_b64():
-    """Lê logo.png do diretório do projeto e retorna a string base64, ou None se não encontrado."""
-    caminho = os.path.join(os.path.dirname(__file__), "..", "logo.png")
+def _carregar_b64(nome_arquivo: str) -> str | None:
+    """Lê um arquivo de imagem do diretório do projeto e retorna a string base64, ou None se não encontrado."""
+    caminho = os.path.join(os.path.dirname(__file__), "..", nome_arquivo)
     if not os.path.exists(caminho):
-        caminho = "logo.png"
+        caminho = nome_arquivo
     if not os.path.exists(caminho):
         return None
     try:
@@ -22,10 +22,19 @@ def _carregar_logo_b64():
         return None
 
 
-_LOGO_B64 = _carregar_logo_b64()
+_LOGO_B64 = _carregar_b64("logo.png")
 LOGO_IMG_TAG = (
     f'<img src="data:image/png;base64,{_LOGO_B64}" alt="HGMF" style="height:__H__px; display:block" />'
     if _LOGO_B64 else ""
+)
+
+# Ícone/marca do sistema (sino + coração + cruz) — usado no cabeçalho e na
+# tela de login. Independente do logo do hospital (LOGO_IMG_TAG), que segue
+# usado nos documentos impressos/e-mails oficiais.
+_ICON_B64 = _carregar_b64(os.path.join("assets", "notificare_icone.png"))
+ICON_IMG_TAG = (
+    f'<img src="data:image/png;base64,{_ICON_B64}" alt="NotifiCare" style="height:__H__px; display:block" />'
+    if _ICON_B64 else ""
 )
 
 
@@ -194,18 +203,25 @@ def render_cabecalho(menu_items: list[str], perm_label: str) -> str:
         background: #eef1f6 !important;
         color: #0d47a1 !important;
     }
+    .st-key-painel-header .st-key-btn_sair div[data-testid="stButton"] button {
+        background: linear-gradient(135deg, #f57c00, #ff9800) !important;
+        border: none !important;
+    }
+    .st-key-painel-header .st-key-btn_sair div[data-testid="stButton"] button:hover {
+        background: linear-gradient(135deg, #ef6c00, #f57c00) !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
     with st.container(key="painel-header"):
         col_logo, col_titulo, col_user, col_sair = st.columns([0.6, 4, 2.4, 1])
         with col_logo:
-            if LOGO_IMG_TAG:
-                st.markdown(LOGO_IMG_TAG.replace("__H__", "38"), unsafe_allow_html=True)
+            if ICON_IMG_TAG:
+                st.markdown(ICON_IMG_TAG.replace("__H__", "44"), unsafe_allow_html=True)
         with col_titulo:
             st.markdown(
-                '<div style="color:#fff; font-size:15px; font-weight:700; padding-top:2px">Painel de Gestão — HGMF</div>'
-                '<div style="color:#b9d3f4; font-size:12px">Núcleo de Segurança do Paciente</div>',
+                '<div style="color:#fff; font-size:17px; font-weight:800; letter-spacing:0.4px; padding-top:2px">NOTIFICARE</div>'
+                '<div style="color:#b9d3f4; font-size:12px">Sistema Integrado de Segurança do Paciente — HGMF</div>',
                 unsafe_allow_html=True
             )
         with col_user:
