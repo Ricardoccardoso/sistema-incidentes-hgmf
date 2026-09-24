@@ -30,7 +30,7 @@ def tela_login(logo_img_tag: str) -> None:
     encerra a execução do script com st.stop(). Deve ser chamada apenas
     quando st.session_state["logado"] for False.
     """
-    _logo_login = logo_img_tag.replace("__H__", "52").replace(
+    _logo_login = logo_img_tag.replace("__H__", "84").replace(
         'style="', 'style="margin:0 auto 12px; '
     ) if logo_img_tag else '<span style="font-size:2.8rem;">🔒</span>'
     st.markdown(f"""

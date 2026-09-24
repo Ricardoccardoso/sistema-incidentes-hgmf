@@ -214,10 +214,10 @@ def render_cabecalho(menu_items: list[str], perm_label: str) -> str:
     """, unsafe_allow_html=True)
 
     with st.container(key="painel-header"):
-        col_logo, col_titulo, col_user, col_sair = st.columns([0.6, 4, 2.4, 1])
+        col_logo, col_titulo, col_user, col_sair = st.columns([0.9, 4, 2.4, 1])
         with col_logo:
             if ICON_IMG_TAG:
-                st.markdown(ICON_IMG_TAG.replace("__H__", "44"), unsafe_allow_html=True)
+                st.markdown(ICON_IMG_TAG.replace("__H__", "68"), unsafe_allow_html=True)
         with col_titulo:
             st.markdown(
                 '<div style="color:#fff; font-size:17px; font-weight:800; letter-spacing:0.4px; padding-top:2px">NOTIFICARE</div>'
