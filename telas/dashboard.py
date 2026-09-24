@@ -18,7 +18,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from rotinas.constantes import STATUS_OPTS
+from rotinas.constantes import STATUS_OPTS, PALETA_CATEGORICA
 
 
 def render(df_dados: pd.DataFrame) -> None:
@@ -262,11 +262,11 @@ def render(df_dados: pd.DataFrame) -> None:
         df_cat = df_f["Categoria_Incidente"].value_counts().reset_index()
         df_cat.columns = ["Categoria", "Qtd"]
         chart_cat = alt.Chart(df_cat).mark_bar(cornerRadiusTopRight=5, cornerRadiusTopLeft=5).encode(
-            x=alt.X("Qtd:Q", title="Quantidade"),
-            y=alt.Y("Categoria:N", sort="-x", title=""),
-            color=alt.value("#1565c0"),
+            x=alt.X("Categoria:N", sort="-y", title="", axis=alt.Axis(labelAngle=-35, labelLimit=140)),
+            y=alt.Y("Qtd:Q", title="Quantidade"),
+            color=alt.Color("Categoria:N", scale=alt.Scale(range=PALETA_CATEGORICA), legend=None),
             tooltip=["Categoria", "Qtd"]
-        ).properties(height=280)
+        ).properties(height=320)
         st.altair_chart(chart_cat, use_container_width=True)
 
     with g2:
@@ -289,23 +289,23 @@ def render(df_dados: pd.DataFrame) -> None:
         df_set = df_f["Setor"].value_counts().reset_index()
         df_set.columns = ["Setor", "Qtd"]
         chart_set = alt.Chart(df_set).mark_bar(cornerRadiusTopRight=5, cornerRadiusTopLeft=5).encode(
-            x=alt.X("Qtd:Q", title="Quantidade"),
-            y=alt.Y("Setor:N", sort="-x", title=""),
-            color=alt.value("#0288d1"),
+            x=alt.X("Setor:N", sort="-y", title="", axis=alt.Axis(labelAngle=-35, labelLimit=140)),
+            y=alt.Y("Qtd:Q", title="Quantidade"),
+            color=alt.Color("Setor:N", scale=alt.Scale(range=PALETA_CATEGORICA), legend=None),
             tooltip=["Setor", "Qtd"]
-        ).properties(height=250)
+        ).properties(height=290)
         st.altair_chart(chart_set, use_container_width=True)
 
     with g4:
         st.subheader("Distribuição por Turno")
         df_turno = df_f["Turno"].value_counts().reset_index()
         df_turno.columns = ["Turno", "Qtd"]
-        chart_turno = alt.Chart(df_turno).mark_bar().encode(
-            x=alt.X("Turno:N", title=""),
+        chart_turno = alt.Chart(df_turno).mark_bar(cornerRadiusTopRight=5, cornerRadiusTopLeft=5).encode(
+            x=alt.X("Turno:N", title="", axis=alt.Axis(labelAngle=-35, labelLimit=140)),
             y=alt.Y("Qtd:Q",   title="Qtd"),
-            color=alt.Color("Turno:N", legend=None),
+            color=alt.Color("Turno:N", scale=alt.Scale(range=PALETA_CATEGORICA), legend=None),
             tooltip=["Turno", "Qtd"]
-        ).properties(height=250)
+        ).properties(height=290)
         st.altair_chart(chart_turno, use_container_width=True)
 
     # ── Gráfico: fatores causadores ─────────────────────────────────────────
@@ -314,12 +314,12 @@ def render(df_dados: pd.DataFrame) -> None:
         fatores_todos = df_f["Fatores_Causadores"].dropna().str.split(", ").explode()
         df_fat = fatores_todos.value_counts().head(8).reset_index()
         df_fat.columns = ["Fator", "Qtd"]
-        chart_fat = alt.Chart(df_fat).mark_bar(cornerRadiusTopRight=4).encode(
-            x=alt.X("Qtd:Q"),
-            y=alt.Y("Fator:N", sort="-x"),
-            color=alt.value("#6a1b9a"),
+        chart_fat = alt.Chart(df_fat).mark_bar(cornerRadiusTopRight=4, cornerRadiusTopLeft=4).encode(
+            x=alt.X("Fator:N", sort="-y", title="", axis=alt.Axis(labelAngle=-35, labelLimit=140)),
+            y=alt.Y("Qtd:Q", title="Quantidade"),
+            color=alt.Color("Fator:N", scale=alt.Scale(range=PALETA_CATEGORICA), legend=None),
             tooltip=["Fator", "Qtd"]
-        ).properties(height=240)
+        ).properties(height=280)
         st.altair_chart(chart_fat, use_container_width=True)
     else:
         st.info("Sem dados de fatores causadores.")

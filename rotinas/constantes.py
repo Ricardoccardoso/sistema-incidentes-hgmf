@@ -61,6 +61,15 @@ GRAVIDADE_CORES = {
     "Óbito":     "grave",
 }
 
+# Paleta usada para diferenciar barras/colunas de um mesmo gráfico (uma cor
+# por categoria/setor/etc, em vez de uma cor única) — tons de azul, verde,
+# roxo e âmbar consistentes com o resto da identidade visual do sistema.
+PALETA_CATEGORICA = [
+    "#0d47a1", "#1976d2", "#0288d1", "#00838f", "#6a1b9a", "#8e24aa",
+    "#2e7d32", "#7cb342", "#f9a825", "#ef6c00", "#e64a19", "#c62828",
+    "#ad1457", "#3949ab",
+]
+
 
 def cor_gravidade(g: str) -> str:
     """
