@@ -58,11 +58,8 @@ layout.injetar_css_global()
 #   logado       — True quando o usuário completou o login com sucesso
 #   user         — nome de usuário logado
 #   permissao    — string de permissão armazenada no banco
-#   tentativas   — contador de tentativas de login falhas (proteção brute-force)
-#   bloqueado_ate — datetime até quando o login está bloqueado (None = desbloqueado)
 for k, v in {
     "logado": False, "user": "", "permissao": "",
-    "tentativas": 0, "bloqueado_ate": None
 }.items():
     if k not in st.session_state:
         st.session_state[k] = v
